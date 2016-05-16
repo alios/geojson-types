@@ -44,7 +44,7 @@ module Data.GeoJSON.Objects
          -- * Geometry Collection
          GeometryCollection, newCollection, insert,
          -- * Support types
-         HasFlatCoordinates(..), boundingBox,
+         HasFlatCoordinates(..), BoundingBox, boundingBox,
          GeoJSON, BaseType, GeoJSONObject
        ) where
 
@@ -153,7 +153,7 @@ data LineString
 
 _LineString :: Prism' [Position t] (GeoJSON LineString t)
 _LineString = prism' (\(LineString ps) -> ps) toLS
-  where toLS ls@(_ : _ : _ : _) = pure $ LineString ls
+  where toLS ls@(_ : _ : _) = pure $ LineString ls
         toLS _ = Nothing
 
 
