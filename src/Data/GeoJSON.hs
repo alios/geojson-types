@@ -10,9 +10,8 @@ import Data.GeoJSON.Features
 import Data.GeoJSON.Classes
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BL
-import Control.Lens.Operators
 
-
+-- | read a GeoJSON 'FeatureCollection' from file.
 readFeatureCollection ::
   BaseType t => FilePath -> IO (Either String (FeatureCollection Aeson.Value t))
 readFeatureCollection f = Aeson.eitherDecode <$>  BL.readFile f

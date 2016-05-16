@@ -17,5 +17,7 @@ module Data.GeoJSON.Classes
 import Control.Lens.Getter
 import Data.GeoJSON.Objects
 
+-- | a type which can be converted to a 'GeoJSONObject' 
 class (GeoJSONObject a, BaseType t) => HasGeoJSON a t b | b -> t, b -> a where
+  -- | get 'GeoJSONObject' from value.
   geoJSON :: Getter b (GeoJSON a t)

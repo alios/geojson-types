@@ -17,9 +17,11 @@
 --                RankNTypes
 --
 ----------------------------------------------------------------------------
-module Data.GeoJSON.Features
-       ( Feature, FeatureJSON, _FeatureJSON, FeatureBSON, _FeatureBSON
-       , FeatureCollection, fcZero, fcNew, fcInsert
+module Data.GeoJSON.Features       
+       ( -- * Feature
+         Feature, FeatureJSON, _FeatureJSON, FeatureBSON, _FeatureBSON,
+         -- * FeatureCollection
+         FeatureCollection, fcZero, fcNew, fcInsert
        ) where
 
 import Data.Maybe (fromMaybe, catMaybes)
@@ -43,19 +45,36 @@ import Data.GeoJSON.Intern
 --
 -- Feature
 --
+
 class FeatureType v where
   toFeatureType :: (GeoJSONObject a, BaseType t) => Feature v a t -> v
   
+-- | A GeoJSON Feature record.
+--   See '_FeatureJSON' for feature records that can be converted from/to JSON.
+--   See '_FeatureBSON' for feature records that can be converted from/to BSON.
 data Feature v a t where
   Feature :: (GeoJSONObject a, BaseType t) =>
              GeoJSON a t -> Maybe v -> v -> Feature v a t
 
+-- | feature records that can be converted from/to JSON.
+type FeatureJSON = Feature Aeson.Value
 
+-- | convert from to a JSON 'Feature'. The 3-tupel contains:
+--   a 'GeoJSONObject',
+--   an optional /id/,
+--   a properties value
 _FeatureJSON ::
   (GeoJSONObject a, BaseType t) =>
   Iso' (GeoJSON a t, Maybe Aeson.Value, Aeson.Value) (FeatureJSON a t)
 _FeatureJSON = _Feature
 
+-- | feature records that can be converted from/to BSON.
+type FeatureBSON = Feature Bson.Value
+
+-- | convert from to a BSON 'Feature'. The 3-tupel contains:
+--   a 'GeoJSONObject',
+--   an optional /id/,
+--   a properties value
 _FeatureBSON ::
   (GeoJSONObject a, BaseType t) =>
   Iso' (GeoJSON a t, Maybe Bson.Value, Bson.Value) (FeatureBSON a t)
@@ -68,8 +87,6 @@ _Feature = iso (\(a, i, ps) -> Feature a i ps) (\(Feature a i ps) -> (a, i, ps))
 
 instance BaseType t => HasFlatCoordinates (Feature v a t) t where
   flatCoordinates =  to $ \(Feature a _ _) -> a ^. flatCoordinates
-  
-type FeatureJSON = Feature Aeson.Value
 
 instance FeatureType Aeson.Value where
   toFeatureType = toJSON
@@ -96,12 +113,9 @@ instance (GeoJSONObject a, BaseType t) => Aeson.FromJSON (FeatureJSON a t) where
     t <- o .: typeT
     if t /= featureT then fail $ "expected type " ++ show typeT
       else Feature <$> o .: geometryT <*> o .:? idT <*> o.: propertiesT
-           
-type FeatureBSON = Feature Bson.Value
 
 instance FeatureType Bson.Value where
   toFeatureType = val
-
 
 instance (GeoJSONObject a, BaseType t) => Eq (FeatureBSON a t) where
   a == b = val a == val b
@@ -125,22 +139,33 @@ instance (GeoJSONObject a, BaseType t) => Bson.Val (FeatureBSON a t) where
 -- Feature Collection
 --
 
+-- | a collection of multiple 'Feature'
 data FeatureCollection v t where
   FCZero :: FeatureCollection v t
   FCCons ::
     (GeoJSONObject a, BaseType t) =>
     Feature v a t -> FeatureCollection v t -> FeatureCollection v t
 
+-- | a 'FeatureCollection' that can be converted from/to JSON.
 type FeatureCollectionJSON = FeatureCollection Aeson.Value
 
+-- | a 'FeatureCollection' that can be converted from/to BSON.
+type FeatureCollectionBSON = FeatureCollection Bson.Value
+
+-- | create an empty 'FeatureCollection'
 fcZero :: FeatureCollection v t
 fcZero = FCZero
 
-fcInsert :: (GeoJSONObject a, BaseType t) => FeatureCollection v t -> Feature v a t -> FeatureCollection v t
-fcInsert = flip FCCons
-
+-- | create a 'FeatureCollection' with an initial element.
 fcNew :: (GeoJSONObject a, BaseType t) =>  Feature v a t -> FeatureCollection v t
 fcNew = fcInsert FCZero
+
+-- | insert an element into a 'FeatureCollection'
+fcInsert ::
+  (GeoJSONObject a, BaseType t) =>
+  FeatureCollection v t -> Feature v a t -> FeatureCollection v t
+fcInsert = flip FCCons
+
 
 instance BaseType t => HasFlatCoordinates (FeatureCollection v t) t where
   flatCoordinates = to flatCoordinates'
@@ -148,7 +173,6 @@ instance BaseType t => HasFlatCoordinates (FeatureCollection v t) t where
           flatCoordinates' (FCCons x xs) =
             mappend (x ^. flatCoordinates) (xs ^. flatCoordinates)
   
-
 instance (BaseType t) => Eq (FeatureCollectionJSON t) where
   a == b = toJSON a == toJSON b
 
@@ -170,8 +194,6 @@ instance BaseType t => Aeson.FromJSON (FeatureCollectionJSON t) where
       else withNamedArray (T.unpack featuresT) o $ \a -> do
         fs <- sequence $ parseFC <$> a
         return $ foldr ($) FCZero fs
-
-type FeatureCollectionBSON = FeatureCollection Bson.Value
 
 instance (BaseType t) => Eq (FeatureCollectionBSON t) where
   a == b = val a == val b
@@ -195,8 +217,6 @@ instance BaseType t => Bson.Val (FeatureCollectionBSON t) where
         return $ foldr ($) FCZero fs
       _ -> Nothing
   cast' _ = Nothing
-
-
 
 --
 -- helpers

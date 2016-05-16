@@ -44,7 +44,9 @@ module Data.GeoJSON.Objects
          -- * Geometry Collection
          GeometryCollection, newCollection, insert,
          -- * Support types
+         -- ** Bounding Box
          HasFlatCoordinates(..), BoundingBox, boundingBox,
+         -- ** Base Types
          GeoJSON, BaseType, GeoJSONObject
        ) where
 
@@ -137,6 +139,7 @@ instance (BaseType t) => HasFlatCoordinates (Position t) t where
 -- | see also: <http://geojson.org/geojson-spec.html#point>
 data Point
 
+-- | convert from/to 'Point'
 _Point :: Iso' (Position t) (GeoJSON Point t)
 _Point = iso Point (\(Point p) -> p)
 
@@ -144,22 +147,24 @@ _Point = iso Point (\(Point p) -> p)
 -- | see also: <http://geojson.org/geojson-spec.html#multipoint>
 data MultiPoint
 
+-- | convert from/to 'MultiPoint'
 _MultiPoint :: Iso' [Position t] (GeoJSON MultiPoint t)
 _MultiPoint = iso MultiPoint (\(MultiPoint ps) -> ps)
-
 
 -- | see also: <http://geojson.org/geojson-spec.html#linestring>
 data LineString
 
+-- | convert from/to 'LineString'. Must have 2 or more elements.
 _LineString :: Prism' [Position t] (GeoJSON LineString t)
 _LineString = prism' (\(LineString ps) -> ps) toLS
   where toLS ls@(_ : _ : _) = pure $ LineString ls
         toLS _ = Nothing
 
-
 -- | see also: <http://geojson.org/geojson-spec.html#linestring>
 data LinearRing
 
+-- | a closed (first elemet == last element) 'LineString'. Must have
+--   at least 4 elements. 
 _LinearRing :: BaseType t => Prism' (GeoJSON LineString t) (GeoJSON LinearRing t)
 _LinearRing = prism' lrTols lsTolr 
   where lrTols :: GeoJSON LinearRing t -> GeoJSON LineString t
@@ -184,6 +189,7 @@ closeLineString ls =
 -- | see also: http://geojson.org/geojson-spec.html#multilinestring
 data MultiLineString
 
+-- | convert from/to 'MultiLineString'
 _MultiLineString :: Iso' [GeoJSON LineString t] (GeoJSON MultiLineString t)
 _MultiLineString = iso MultiLineString (\(MultiLineString lss) -> lss)
 
@@ -191,18 +197,21 @@ _MultiLineString = iso MultiLineString (\(MultiLineString lss) -> lss)
 -- | see also: http://geojson.org/geojson-spec.html#polygon
 data Polygon
 
+-- | convert from/to 'Polygon'
 _Polygon :: Iso' [GeoJSON LinearRing t] (GeoJSON Polygon t)
 _Polygon = iso Polygon (\(Polygon lr) -> lr)
 
 -- | see also: http://geojson.org/geojson-spec.html#multipolygon
 data MultiPolygon
 
+-- | convert from/to 'MultiPolygon'
 _MultiPolygon :: Iso' [GeoJSON Polygon t] (GeoJSON MultiPolygon t)
 _MultiPolygon = iso MultiPolygon (\(MultiPolygon lr) -> lr)
 
 -- | see also: http://geojson.org/geojson-spec.html#geometry-collection
 data Collection
 
+-- | convert from/to 'GeometryCollection'
 _GeometryCollection :: Iso' (GeometryCollection t) (GeoJSON Collection t)
 _GeometryCollection = iso GeometryCollection (\(GeometryCollection t) -> t)
 
@@ -211,6 +220,7 @@ _GeometryCollection = iso GeometryCollection (\(GeometryCollection t) -> t)
 -- GeoJSON
 --
 
+-- | the base type of all GeoJSON object. see also 'GeoJSONObject'
 data GeoJSON a t where
   Point :: Position t -> GeoJSON Point t
   MultiPoint :: [Position t] -> GeoJSON MultiPoint t
@@ -260,16 +270,18 @@ instance (GeoJSONObject a, BaseType t) => HasFlatCoordinates (GeoJSON a t) t whe
 -- GeometryCollection
 --
 
+-- | a collection of 'GeoJSONObject'.
 data GeometryCollection t where
   GCZero  :: GeometryCollection t
   GCCons  :: GeoJSONObject a =>
               GeoJSON a t -> GeometryCollection t -> GeometryCollection t
   deriving (Typeable)
 
-newCollection :: 
-  (GeoJSONObject a) => GeoJSON a t -> GeometryCollection t
+-- | create a new 'GeometryCollection' with initial element
+newCollection :: (GeoJSONObject a) => GeoJSON a t -> GeometryCollection t
 newCollection = insert GCZero
 
+-- | insert a 'GeoJSONObject' into 'GeometryCollection'
 insert ::
   (GeoJSONObject a) => GeometryCollection t ->  GeoJSON a t -> GeometryCollection t
 insert = flip GCCons
@@ -315,6 +327,8 @@ instance (BaseType t) => Bson.Val (GeometryCollection t) where
 --
 -- GeoJSONObject
 --
+
+-- | common type clas of all 'GeoJSON' objects
 class (Typeable a) => GeoJSONObject a where
   type GeoJSONObjectType a t :: *
   _GeoObject :: BaseType t => Prism' (GeoJSONObjectType a t) (GeoJSON a t)
