@@ -162,7 +162,7 @@ data LinearRing
 
 _LinearRing :: BaseType t => Prism' (GeoJSON LineString t) (GeoJSON LinearRing t)
 _LinearRing = prism' lrTols lsTolr 
-  where lrTols :: BaseType t => GeoJSON LinearRing t -> GeoJSON LineString t
+  where lrTols :: GeoJSON LinearRing t -> GeoJSON LineString t
         lrTols (LinearRing ls) = ls
         lsTolr :: BaseType t => GeoJSON LineString t -> Maybe (GeoJSON LinearRing t)
         lsTolr ls =
