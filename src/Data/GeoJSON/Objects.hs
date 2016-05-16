@@ -87,7 +87,7 @@ class BaseType t => HasFlatCoordinates a t | a -> t where
 
 -- | calculate the bounding box of the the given object.
 boundingBox :: (HasFlatCoordinates a t) => Getter a (BoundingBox t)
-boundingBox = to $ calcBbox . view flatCoordinates
+boundingBox = flatCoordinates . to calcBbox
   
 --
 -- Position
@@ -342,21 +342,21 @@ instance GeoJSONObject Point where
   _GeoObject = prism' (view $ from _Point) (pure . view _Point)
   castBson = castGeoBSON pointT
   parseGeoJSON = parseGeoJSONbyName pointT
-  flatCoordinatesGeoJSON = to $ pure . view (from _Point)
+  flatCoordinatesGeoJSON = from _Point . to pure
   
 instance GeoJSONObject MultiPoint where
   type GeoJSONObjectType MultiPoint t = [Position t]
   _GeoObject = prism' (view $ from _MultiPoint) (pure . view _MultiPoint)
   castBson = castGeoBSON multiPointT
   parseGeoJSON = parseGeoJSONbyName multiPointT
-  flatCoordinatesGeoJSON = to $ view (from _MultiPoint)
+  flatCoordinatesGeoJSON = from _MultiPoint
                                
 instance GeoJSONObject LineString where
   type GeoJSONObjectType LineString t = [Position t]
   _GeoObject = prism' (review _LineString) (preview _LineString)
   castBson = castGeoBSON lineStringT
   parseGeoJSON = parseGeoJSONbyName lineStringT
-  flatCoordinatesGeoJSON = to $ review _LineString
+  flatCoordinatesGeoJSON = re _LineString
 
 instance GeoJSONObject LinearRing where
   type GeoJSONObjectType LinearRing t = [Position t]
@@ -365,7 +365,7 @@ instance GeoJSONObject LinearRing where
     (preview _LineString >=> preview _LinearRing ) 
   castBson = castGeoBSON linearRingT
   parseGeoJSON = parseGeoJSONbyName linearRingT
-  flatCoordinatesGeoJSON = to $ view flatCoordinatesGeoJSON . review _LinearRing
+  flatCoordinatesGeoJSON = re _LinearRing . flatCoordinatesGeoJSON 
     
 instance GeoJSONObject MultiLineString where
   type GeoJSONObjectType MultiLineString t = [[Position t]]
@@ -403,7 +403,7 @@ instance GeoJSONObject Collection where
     (pure . view _GeometryCollection)
   castBson = fmap (view _GeometryCollection) . cast'
   parseGeoJSON = fmap (view _GeometryCollection) . parseJSON
-  flatCoordinatesGeoJSON = to $ colFlatPs . view (from _GeometryCollection)
+  flatCoordinatesGeoJSON =  re _GeometryCollection . to colFlatPs
     where colFlatPs GCZero = mempty
           colFlatPs (GCCons x xs) =
             mappend (x ^. flatCoordinatesGeoJSON) (colFlatPs xs)
@@ -414,7 +414,7 @@ instance GeoJSONObject Collection where
 
 calcBbox :: BaseType t => [Position t] -> BoundingBox t
 calcBbox as =
-  let (xs, ys) = unzip . fmap (view (from _Position)) $ as
+  let (xs, ys) = unzip . fmap (review _Position) $ as
       minc = (minimum xs, minimum ys) ^. _Position
       maxc = (maximum xs, maximum ys) ^. _Position
   in (minc, maxc)
