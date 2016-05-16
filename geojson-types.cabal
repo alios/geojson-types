@@ -25,7 +25,7 @@ description:
             'Double' to a 'Position', use the '_Position' 'Iso' as a
             'Getter' on that pair:
             .
-            > _Position :: BaseType t => (t, t) -> Position t
+            > _Position :: BaseType t => Iso' (t, t) (Position t)
             >
             > pos :: Position Double
             > pos = (57.324, 7.2342) ^. _Position
