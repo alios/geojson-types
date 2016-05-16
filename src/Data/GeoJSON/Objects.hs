@@ -32,7 +32,7 @@ module Data.GeoJSON.Objects
          -- ** Line String         
          LineString, _LineString,
          -- ** Linear Ring 
-         LinearRing, _LinearRing,
+         LinearRing, _LinearRing, closeLineString,
          -- ** MultiLineString
          MultiLineString, _MultiLineString,
          -- ** Polygon 
@@ -170,6 +170,15 @@ _LinearRing = prism' lrTols lsTolr
           in if (head ps == last ps) && (length ps >= 4)
              then pure $ LinearRing ls
              else Nothing
+
+-- | create 'LinearRing' from 'LineString' by closing it.
+closeLineString ::
+  BaseType t => GeoJSON LineString t -> Maybe (GeoJSON LinearRing t)
+closeLineString ls =
+  let ps = review _LineString ls
+  in if head ps == last ps
+     then preview _LinearRing ls
+     else preview _LineString (last ps : ps) >>= preview _LinearRing
 
 
 -- | see also: http://geojson.org/geojson-spec.html#multilinestring
