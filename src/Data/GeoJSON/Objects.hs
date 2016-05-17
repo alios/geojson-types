@@ -56,6 +56,7 @@ import Control.Lens.Review
 import Control.Lens.Prism
 import Control.Lens.Iso
 import Control.Lens.Getter
+import Control.Lens.Each
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Aeson (toJSON, parseJSON, (.=), (.:))
@@ -310,10 +311,9 @@ instance (BaseType t) => Bson.Val (GeometryCollection t) where
   val a = Bson.Doc
     [ typeT := val geometryCollectionT
     , T.pack geometriesT := Bson.Array (toValue a)
-    ]
-    where
-      toValue GCZero = []
-      toValue (GCCons a as) = val a : toValue as
+    ] where
+    toValue GCZero = []
+    toValue (GCCons a as) = val a : toValue as
   cast' (Bson.Doc d) = do
     t <- Bson.lookup typeT d
     if t /= geometryCollectionT then Nothing
@@ -365,8 +365,7 @@ instance GeoJSONObject LinearRing where
     (preview _LineString >=> preview _LinearRing ) 
   castBson = castGeoBSON linearRingT
   parseGeoJSON = parseGeoJSONbyName linearRingT
-  flatCoordinatesGeoJSON = re _LinearRing . flatCoordinatesGeoJSON 
-    
+  flatCoordinatesGeoJSON = re _LinearRing . flatCoordinatesGeoJSON     
 instance GeoJSONObject MultiLineString where
   type GeoJSONObjectType MultiLineString t = [[Position t]]
   _GeoObject = prism'
@@ -374,9 +373,9 @@ instance GeoJSONObject MultiLineString where
     (traverseGeoObjectsWithGetter _MultiLineString )
   castBson = castGeoBSON multiLineStringT
   parseGeoJSON = parseGeoJSONbyName multiLineStringT
-  flatCoordinatesGeoJSON = to $
-    mconcat . fmap (view flatCoordinatesGeoJSON) . view (from _MultiLineString)
-    
+  flatCoordinatesGeoJSON = 
+    flatCoordinatesList (from _MultiLineString)
+
 instance GeoJSONObject Polygon where
   type GeoJSONObjectType Polygon t = [[Position t]]
   _GeoObject = prism'
@@ -384,8 +383,7 @@ instance GeoJSONObject Polygon where
     (traverseGeoObjectsWithGetter _Polygon )
   castBson = castGeoBSON polygonT
   parseGeoJSON = parseGeoJSONbyName polygonT
-  flatCoordinatesGeoJSON = to $
-    mconcat . fmap (view flatCoordinatesGeoJSON) . review _Polygon
+  flatCoordinatesGeoJSON = flatCoordinatesList (re _Polygon)
 
 instance GeoJSONObject MultiPolygon where
   type GeoJSONObjectType MultiPolygon t = [[[Position t]]]
@@ -394,12 +392,12 @@ instance GeoJSONObject MultiPolygon where
     (traverseGeoObjectsWithGetter _MultiPolygon )
   castBson =  castGeoBSON multiPolygonT
   parseGeoJSON = parseGeoJSONbyName multiPolygonT
-  flatCoordinatesGeoJSON = to $
-    mconcat . fmap (view flatCoordinatesGeoJSON) . view (from _MultiPolygon)
+  flatCoordinatesGeoJSON = flatCoordinatesList (re _MultiPolygon)
   
 instance GeoJSONObject Collection where
   type GeoJSONObjectType Collection t = GeometryCollection t
-  _GeoObject = prism' (view (from _GeometryCollection))
+  _GeoObject = prism'
+    (view (from _GeometryCollection))
     (pure . view _GeometryCollection)
   castBson = fmap (view _GeometryCollection) . cast'
   parseGeoJSON = fmap (view _GeometryCollection) . parseJSON
@@ -431,6 +429,17 @@ mkBsonObject t p = Bson.Doc
   , coordinatesT := val (review _GeoObject p)
   ]
 
+flatCoordinatesList ::
+  (BaseType t, GeoJSONObject a) =>
+  Getter b [GeoJSON a t] -> Getter b [Position t]
+flatCoordinatesList ga = getterMapConcat ga flatCoordinatesGeoJSON
+
+getterMapConcat ::
+  (Monoid c) => Getter a [b] ->  Getter b c -> Getter a c
+getterMapConcat ga gb = getterMap ga gb . to mconcat
+
+getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Getter a (f c)
+getterMap ga gb = to $ \a -> view gb <$> a ^. ga
 
 foldCollectionJSON ::
   (BaseType t, Functor f, Foldable f, Traversable f, Monad m) =>

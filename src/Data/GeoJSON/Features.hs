@@ -101,11 +101,7 @@ instance (GeoJSONObject a, BaseType t) => Aeson.ToJSON (FeatureJSON a t) where
     typeT .= featureT,
     geometryT .= g,
     propertiesT .= props
-    ] ++ _id
-    where
-      _id = case mid of
-        Nothing -> []
-        Just a -> [ idT .= a ]
+    ] ++ maybe [] (\a -> [idT .= a]) mid
         
 instance (GeoJSONObject a, BaseType t) => Aeson.FromJSON (FeatureJSON a t) where
   parseJSON = Aeson.withObject featureT $ \o -> do
@@ -181,10 +177,10 @@ instance (BaseType t) => Show (FeatureCollectionJSON t) where
 instance (BaseType t) => Aeson.ToJSON (FeatureCollectionJSON t) where
   toJSON fc = Aeson.object [
     typeT .= featureCollectionT,
-    featuresT .= toValue fc
-    ]
-    where toValue FCZero = []
-          toValue (FCCons x xs) = toFeatureType x : toValue xs
+    featuresT .= toValue fc ]
+    where
+      toValue FCZero = []
+      toValue (FCCons x xs) = toFeatureType x : toValue xs
 
 instance BaseType t => Aeson.FromJSON (FeatureCollectionJSON t) where
   parseJSON = Aeson.withObject featureCollectionT $ \o -> do
@@ -263,6 +259,8 @@ parseFC v = case catMaybes ps of
         parseFeatureByType :: (GeoJSONObject a, BaseType t) =>
                       Proxy a -> Aeson.Value -> Maybe (FeatureJSON a t)
         parseFeatureByType _ = Aeson.parseMaybe parseJSON
+
+
 
 
 
