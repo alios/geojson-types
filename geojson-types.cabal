@@ -66,7 +66,8 @@ library
   exposed-modules:     Data.GeoJSON,
                        Data.GeoJSON.Objects,
                        Data.GeoJSON.Features,
-                       Data.GeoJSON.Classes
+                       Data.GeoJSON.Classes,
+                       Data.GeoJSON.Backend
   other-modules:       Data.GeoJSON.Intern
   other-extensions:    FlexibleInstances,
                        TypeSynonymInstances,
