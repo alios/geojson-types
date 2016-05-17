@@ -393,7 +393,9 @@ instance GeoJSONObject MultiPolygon where
   castBson =  castGeoBSON multiPolygonT
   parseGeoJSON = parseGeoJSONbyName multiPolygonT
   flatCoordinatesGeoJSON = flatCoordinatesList (re _MultiPolygon)
-  
+
+
+
 instance GeoJSONObject Collection where
   type GeoJSONObjectType Collection t = GeometryCollection t
   _GeoObject = prism'
@@ -405,7 +407,8 @@ instance GeoJSONObject Collection where
     where colFlatPs GCZero = mempty
           colFlatPs (GCCons x xs) =
             mappend (x ^. flatCoordinatesGeoJSON) (colFlatPs xs)
-  
+
+
 --
 -- Helpers
 --
@@ -440,6 +443,40 @@ getterMapConcat ga gb = getterMap ga gb . to mconcat
 
 getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Getter a (f c)
 getterMap ga gb = to $ \a -> view gb <$> a ^. ga
+
+aa :: (BaseType t) => Fold (GeoJSON MultiPolygon t) [Position t]
+aa = re _MultiPolygon . each . flatCoordinatesGeoJSON 
+
+--bb :: (BaseType t) => Fold (GeoJSON MultiPolygon t) (Position t)
+--bb = aa 
+
+
+{-
+flatCoordinatesList ::
+  (BaseType t, GeoJSONObject a) =>
+  Getter b [GeoJSON a t] -> Getter b [Position t]
+flatCoordinatesList ga = getterMapConcat ga flatCoordinatesGeoJSON
+
+getterMapConcat ::
+  (Monoid c) => Getter a [b] ->  Getter b c -> Getter a c
+getterMapConcat ga gb = getterMap ga gb . to mconcat
+
+getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Getter a (f c)
+getterMap ga gb = to $ \a -> view gb <$> a ^. ga
+-}
+
+
+
+
+
+
+--bb = aa . to mconcat
+
+
+--getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Fold a c
+
+
+
 
 foldCollectionJSON ::
   (BaseType t, Functor f, Foldable f, Traversable f, Monad m) =>
