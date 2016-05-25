@@ -26,11 +26,10 @@ module Data.GeoJSON.Features
          fcEmpty, fcNew, fcInsert, fcCons, fcHead
        ) where
 
-import           Control.Lens.Fold
+
 import           Control.Lens.Getter
 import           Control.Lens.Iso
 import           Control.Lens.Prism
-import           Control.Lens.Type
 import           Control.Monad
 import           Data.Aeson           (parseJSON, toJSON, (.:), (.:?), (.=))
 import qualified Data.Aeson           as Aeson
@@ -39,12 +38,11 @@ import           Data.Bson            (Field (..), cast', val)
 import qualified Data.Bson            as Bson
 import           Data.GeoJSON.Intern
 import           Data.GeoJSON.Objects
-import           Data.Maybe           (catMaybes, fromMaybe)
+import           Data.Maybe           (catMaybes)
 import           Data.Proxy
-import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Data.Typeable
-import           Data.Typeable.Lens
+
 
 
 --
@@ -149,7 +147,7 @@ instance (GeoJSONObject a, BaseType t) => Bson.Val (FeatureBSON a t) where
     <$> Bson.lookup geometryT d
     <*> pure (Bson.look idBsonT d)
     <*> Bson.look propertiesT d
-
+  cast' _ = Nothing
 
 --
 -- Feature Collection

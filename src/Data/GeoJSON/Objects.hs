@@ -58,8 +58,7 @@ import Control.Lens.Review
 import Control.Lens.Prism
 import Control.Lens.Iso
 import Control.Lens.Getter
-import Control.Lens.Each
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes)
 import Data.Typeable (Typeable)
 import Data.Aeson -- (toJSON, parseJSON, (.=), (.:))
 import qualified Data.Aeson.Types as Aeson
@@ -263,7 +262,7 @@ instance (GeoJSONObject a, BaseType t) => Aeson.ToJSON (GeoJSON a t) where
   toJSON p@(MultiLineString _) = mkObject multiLineStringT p
   toJSON p@(Polygon _) = mkObject polygonT p
   toJSON p@(MultiPolygon _) = mkObject multiPolygonT p
-  toJSON p@(GeometryCollection c) = toJSON c
+  toJSON (GeometryCollection c) = toJSON c
 
 instance (GeoJSONObject a, BaseType t) => Aeson.FromJSON (GeoJSON a t) where
   parseJSON = parseGeoJSON
@@ -276,7 +275,7 @@ instance (GeoJSONObject a, BaseType t) => Bson.Val (GeoJSON a t) where
   val p@(MultiLineString _) = mkBsonObject multiLineStringT p
   val p@(Polygon _) = mkBsonObject polygonT p
   val p@(MultiPolygon _) = mkBsonObject multiPolygonT p
-  val p@(GeometryCollection c) = val c
+  val (GeometryCollection c) = val c
   cast' = castBson
 
 instance (GeoJSONObject a, BaseType t) => HasFlatCoordinates (GeoJSON a t) t where
@@ -291,7 +290,7 @@ instance (GeoJSONObject a, BaseType t) => PersistField (GeoJSON a t) where
   toPersistValue p@(MultiLineString _) = mkPersistObject multiLineStringT p
   toPersistValue p@(Polygon _) = mkPersistObject polygonT p
   toPersistValue p@(MultiPolygon _) = mkPersistObject multiPolygonT p
-  toPersistValue p@(GeometryCollection c) = toPersistValue c
+  toPersistValue (GeometryCollection c) = toPersistValue c
   fromPersistValue = maybe (Left "unable to read GeoJSON") Right . fromPersist
 
 instance (GeoJSONObject a, BaseType t) => PersistFieldSql (GeoJSON a t) where
@@ -338,7 +337,7 @@ instance (BaseType t) => Aeson.ToJSON (GeometryCollection t) where
     [typeT .= geometryCollectionT, T.pack geometriesT .= toValue a]
     where
       toValue GCZero = []
-      toValue (GCCons a as) = toJSON a : toValue as
+      toValue (GCCons a' as) = toJSON a' : toValue as
 
 instance (BaseType t) => Aeson.FromJSON (GeometryCollection t) where
   parseJSON = Aeson.withObject geometryCollectionT $ \o -> do
@@ -353,7 +352,7 @@ instance (BaseType t) => Bson.Val (GeometryCollection t) where
     , T.pack geometriesT := Bson.Array (toValue a)
     ] where
     toValue GCZero = []
-    toValue (GCCons a as) = val a : toValue as
+    toValue (GCCons a' as) = val a' : toValue as
   cast' (Bson.Doc d) = do
     t <- Bson.lookup typeT d
     if t /= geometryCollectionT then Nothing
@@ -372,7 +371,7 @@ instance BaseType t => PersistField (GeometryCollection t) where
     , (T.pack geometriesT, PersistList (toValue a) )
     ] where
     toValue GCZero = []
-    toValue (GCCons a as) = toPersistValue a : toValue as
+    toValue (GCCons a' as) = toPersistValue a' : toValue as
   fromPersistValue (PersistMap m) = do
     case (,) <$> lookup typeT m <*> lookup (T.pack geometriesT) m of
       Nothing ->
@@ -384,6 +383,8 @@ instance BaseType t => PersistField (GeometryCollection t) where
           else case gs' of
             PersistList gs -> foldCollectionPersist gs
             _ -> Left $ mconcat [T.pack geometryCollectionT,  ": expected list"]
+  fromPersistValue _ =
+    Left $ mconcat [T.pack geometryCollectionT,  ": expected object"]
 
 instance BaseType t => PersistFieldSql (GeometryCollection t) where
   sqlType _ = SqlString
@@ -592,6 +593,7 @@ toGeoPersist n (PersistMap m) = do
     gs <- lookup coordinatesT m >>=
       either (const Nothing) pure . fromPersistValue
     preview _GeoObject gs
+toGeoPersist _ _ = Nothing
 
 
 parseGCCons' ::
@@ -710,7 +712,7 @@ toGCCons' v = catMaybes [p v | p <- ps]
         castCollection a =
           case view _GeometryCollection <$> fromPersistValue a of
             Left _ -> Nothing
-            Right a -> pure a
+            Right a' -> pure a'
 
 
 traverseObjectsWithIso ::

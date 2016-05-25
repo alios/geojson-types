@@ -1,5 +1,5 @@
 name:                geojson-types
-version:             0.1.6.1
+version:             0.1.6.2
 synopsis:            GeoJSON data types including JSON/BSON conversion.
 homepage:            https://github.com/alios/geojson-types/
 bug-reports:         https://github.com/alios/geojson-types/issues
@@ -87,3 +87,4 @@ library
                        persistent >= 2.2
   hs-source-dirs:      src
   default-language:    Haskell2010
+  ghc-options:         -Wall
