@@ -1,5 +1,5 @@
 name:                geojson-types
-version:             0.1.6
+version:             0.1.6.1
 synopsis:            GeoJSON data types including JSON/BSON conversion.
 homepage:            https://github.com/alios/geojson-types/
 bug-reports:         https://github.com/alios/geojson-types/issues

@@ -50,6 +50,8 @@ module Data.GeoJSON.Objects
          GeoJSON, BaseType, GeoJSONObject
        ) where
 
+import Data.Text.Lazy.Encoding
+import qualified Data.Text.Lazy as TL
 import qualified Data.Text as T
 import Control.Lens.Fold
 import Control.Lens.Review
@@ -59,13 +61,14 @@ import Control.Lens.Getter
 import Control.Lens.Each
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Typeable (Typeable)
-import Data.Aeson (toJSON, parseJSON, (.=), (.:))
+import Data.Aeson -- (toJSON, parseJSON, (.=), (.:))
 import qualified Data.Aeson.Types as Aeson
 import Data.Bson (Field(..), cast', val)
 import qualified Data.Bson as Bson
 import Control.Monad
 import Data.GeoJSON.Intern
 import Database.Persist
+import Database.Persist.Sql
 
 --
 -- BaseType
@@ -91,6 +94,9 @@ class BaseType t => HasFlatCoordinates a t | a -> t where
 boundingBox :: (HasFlatCoordinates a t) => Getter a (BoundingBox t)
 boundingBox = flatCoordinates . to calcBbox
 
+
+
+
 --
 -- Position
 --
@@ -112,7 +118,8 @@ instance (Eq t) => Eq (Position t) where
   (Position a) == (Position b) = a == b
 
 instance BaseType t => Show (Position t) where
-  show = show . toJSON
+  show = showJSON
+
 
 instance BaseType t => Aeson.ToJSON (Position t) where
   toJSON = toJSON . view (from _Position)
@@ -131,6 +138,9 @@ instance BaseType t => Bson.Val (Position t) where
 instance BaseType t => PersistField (Position t) where
   toPersistValue = toPersistValue . view (from _Position)
   fromPersistValue = fmap (view _Position) . fromPersistValue
+
+instance BaseType t => PersistFieldSql (Position t) where
+  sqlType _ = SqlString
 
 instance (BaseType t) => HasFlatCoordinates (Position t) t where
   flatCoordinates = to pure
@@ -222,6 +232,7 @@ _GeometryCollection :: Iso' (GeometryCollection t) (GeoJSON Collection t)
 _GeometryCollection = iso GeometryCollection (\(GeometryCollection t) -> t)
 
 
+
 --
 -- GeoJSON
 --
@@ -242,7 +253,7 @@ instance (GeoJSONObject a, BaseType t) => Eq (GeoJSON a t) where
   a == b = toJSON a == toJSON b
 
 instance (GeoJSONObject a, BaseType t) => Show (GeoJSON a t) where
-  show = show . toJSON
+  show = showJSON
 
 instance (GeoJSONObject a, BaseType t) => Aeson.ToJSON (GeoJSON a t) where
   toJSON p@(Point _) = mkObject pointT p
@@ -283,6 +294,9 @@ instance (GeoJSONObject a, BaseType t) => PersistField (GeoJSON a t) where
   toPersistValue p@(GeometryCollection c) = toPersistValue c
   fromPersistValue = maybe (Left "unable to read GeoJSON") Right . fromPersist
 
+instance (GeoJSONObject a, BaseType t) => PersistFieldSql (GeoJSON a t) where
+  sqlType _ = SqlString
+
 
 mkPersistObject ::
   (GeoJSONObject a, BaseType t, PersistField (GeoJSONObjectType a t)) =>
@@ -317,7 +331,7 @@ instance BaseType t => Eq (GeometryCollection t) where
   a == b = toJSON a == toJSON b
 
 instance BaseType t => Show (GeometryCollection t) where
-  show = show . toJSON
+  show = showJSON
 
 instance (BaseType t) => Aeson.ToJSON (GeometryCollection t) where
   toJSON a = Aeson.object
@@ -350,6 +364,8 @@ instance (BaseType t) => Bson.Val (GeometryCollection t) where
           _ -> Nothing
   cast' _ = Nothing
 
+
+
 instance BaseType t => PersistField (GeometryCollection t) where
   toPersistValue a = PersistMap
     [ (typeT, toPersistValue geometryCollectionT)
@@ -368,6 +384,9 @@ instance BaseType t => PersistField (GeometryCollection t) where
           else case gs' of
             PersistList gs -> foldCollectionPersist gs
             _ -> Left $ mconcat [T.pack geometryCollectionT,  ": expected list"]
+
+instance BaseType t => PersistFieldSql (GeometryCollection t) where
+  sqlType _ = SqlString
 
 
 --
@@ -499,39 +518,6 @@ getterMapConcat ga gb = getterMap ga gb . to mconcat
 getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Getter a (f c)
 getterMap ga gb = to $ \a -> view gb <$> a ^. ga
 
-aa :: (BaseType t) => Fold (GeoJSON MultiPolygon t) [Position t]
-aa = re _MultiPolygon . each . flatCoordinatesGeoJSON
-
---bb :: (BaseType t) => Fold (GeoJSON MultiPolygon t) (Position t)
---bb = aa
-
-
-{-
-flatCoordinatesList ::
-  (BaseType t, GeoJSONObject a) =>
-  Getter b [GeoJSON a t] -> Getter b [Position t]
-flatCoordinatesList ga = getterMapConcat ga flatCoordinatesGeoJSON
-
-getterMapConcat ::
-  (Monoid c) => Getter a [b] ->  Getter b c -> Getter a c
-getterMapConcat ga gb = getterMap ga gb . to mconcat
-
-getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Getter a (f c)
-getterMap ga gb = to $ \a -> view gb <$> a ^. ga
--}
-
-
-
-
-
-
---bb = aa . to mconcat
-
-
---getterMap :: (Functor f) => Getter a (f b) ->  Getter b c -> Fold a c
-
-
-
 
 foldCollectionJSON ::
   (BaseType t, Functor f, Foldable f, Traversable f, Monad m) =>
@@ -561,7 +547,6 @@ toGCCons ::
 toGCCons v = case toGCCons' v of
   (cc:_) -> pure cc
   _ -> Nothing
-
 
 parseGCCons ::
   BaseType t => Aeson.Value -> Maybe (GeometryCollection t -> GeometryCollection t)
@@ -607,15 +592,6 @@ toGeoPersist n (PersistMap m) = do
     gs <- lookup coordinatesT m >>=
       either (const Nothing) pure . fromPersistValue
     preview _GeoObject gs
-
-{-
-  t <- Bson.lookup typeT o
-  if t /= n then fail $ "unable to parse type " ++ n
-    else do
-      cs <- Bson.lookup coordinatesT o
-      preview _GeoObject cs
-toGeoBSON _ _ = Nothing
--}
 
 
 parseGCCons' ::
@@ -753,3 +729,7 @@ traverseGeoObjectsWithGetter ::
   tt (GeoJSONObjectType a t) ->
   Maybe b
 traverseGeoObjectsWithGetter g = fmap (view g) . traverseGeoObjects
+
+
+showJSON :: ToJSON a => a -> String
+showJSON = TL.unpack . decodeUtf8 . encode
