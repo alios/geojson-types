@@ -1,8 +1,9 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.GeoJSON.Features
@@ -11,34 +12,39 @@
 -- Maintainer  :  Markus Barenhoff <mbarenh@alios.org>
 -- Stability   :  provisional
 -- Portability :  FunctionalDependencies,
---                TypeFamilies, 
+--                TypeFamilies,
 --                GADTs
 --                RankNTypes
 --
 ----------------------------------------------------------------------------
-module Data.GeoJSON.Features       
+module Data.GeoJSON.Features
        ( -- * Feature
          Feature, FeatureJSON, _FeatureJSON, FeatureBSON, _FeatureBSON,
+         featureGeometry, featureId, featureProperties,
          -- * FeatureCollection
-         FeatureCollection, fcZero, fcNew, fcInsert
+         FeatureCollection, _FeatureCollectionList,
+         fcEmpty, fcNew, fcInsert, fcCons, fcHead
        ) where
 
-import Data.Maybe (fromMaybe, catMaybes)
-import Control.Lens.Prism
-import Control.Lens.Fold
-import Control.Lens.Getter
-import qualified Data.Aeson as Aeson
-import qualified Data.Aeson.Types as Aeson
-import Data.Aeson (toJSON, parseJSON, (.=), (.:), (.:?))
-import Data.Bson (Field(..), cast', val)
-import qualified Data.Bson as Bson
-import Data.Text (Text)
-import qualified Data.Text as T
-import Data.Proxy
-import Control.Lens.Iso
-
-import Data.GeoJSON.Objects
-import Data.GeoJSON.Intern
+import           Control.Lens.Fold
+import           Control.Lens.Getter
+import           Control.Lens.Iso
+import           Control.Lens.Prism
+import           Control.Lens.Type
+import           Control.Monad
+import           Data.Aeson           (parseJSON, toJSON, (.:), (.:?), (.=))
+import qualified Data.Aeson           as Aeson
+import qualified Data.Aeson.Types     as Aeson
+import           Data.Bson            (Field (..), cast', val)
+import qualified Data.Bson            as Bson
+import           Data.GeoJSON.Intern
+import           Data.GeoJSON.Objects
+import           Data.Maybe           (catMaybes, fromMaybe)
+import           Data.Proxy
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import           Data.Typeable
+import           Data.Typeable.Lens
 
 
 --
@@ -47,13 +53,27 @@ import Data.GeoJSON.Intern
 
 class FeatureType v where
   toFeatureType :: (GeoJSONObject a, BaseType t) => Feature v a t -> v
-  
+
 -- | A GeoJSON Feature record.
 --   See '_FeatureJSON' for feature records that can be converted from/to JSON.
 --   See '_FeatureBSON' for feature records that can be converted from/to BSON.
 data Feature v a t where
   Feature :: (GeoJSONObject a, BaseType t) =>
              GeoJSON a t -> Maybe v -> v -> Feature v a t
+
+
+featureGeometry ::
+  (GeoJSONObject a, BaseType t) => Getter (Feature v a t) (GeoJSON a t)
+featureGeometry = to $ \(Feature g _ _) -> g
+
+featureId ::
+  (GeoJSONObject a, BaseType t) => Getter (Feature v a t) (Maybe v)
+featureId = to $ \(Feature _ i _) -> i
+
+featureProperties ::
+  (GeoJSONObject a, BaseType t) => Getter (Feature v a t) v
+featureProperties = to $ \(Feature _ _ ps) -> ps
+
 
 -- | feature records that can be converted from/to JSON.
 type FeatureJSON = Feature Aeson.Value
@@ -84,12 +104,13 @@ _Feature ::
 _Feature = iso (\(a, i, ps) -> Feature a i ps) (\(Feature a i ps) -> (a, i, ps))
 
 
+
 instance BaseType t => HasFlatCoordinates (Feature v a t) t where
   flatCoordinates =  to $ \(Feature a _ _) -> a ^. flatCoordinates
 
 instance FeatureType Aeson.Value where
   toFeatureType = toJSON
-  
+
 instance (GeoJSONObject a, BaseType t) => Eq (FeatureJSON a t) where
   a == b = toJSON a == toJSON b
 
@@ -102,7 +123,7 @@ instance (GeoJSONObject a, BaseType t) => Aeson.ToJSON (FeatureJSON a t) where
     geometryT .= g,
     propertiesT .= props
     ] ++ maybe [] (\a -> [idT .= a]) mid
-        
+
 instance (GeoJSONObject a, BaseType t) => Aeson.FromJSON (FeatureJSON a t) where
   parseJSON = Aeson.withObject featureT $ \o -> do
     t <- o .: typeT
@@ -117,8 +138,8 @@ instance (GeoJSONObject a, BaseType t) => Eq (FeatureBSON a t) where
 
 instance (GeoJSONObject a, BaseType t) => Show (FeatureBSON a t) where
   show = show . val
-    
-instance (GeoJSONObject a, BaseType t) => Bson.Val (FeatureBSON a t) where    
+
+instance (GeoJSONObject a, BaseType t) => Bson.Val (FeatureBSON a t) where
   val (Feature g mid props) = Bson.Doc $ [
     typeT := val featureT,
     geometryT := val g,
@@ -141,6 +162,39 @@ data FeatureCollection v t where
     (GeoJSONObject a, BaseType t) =>
     Feature v a t -> FeatureCollection v t -> FeatureCollection v t
 
+-- | get the first 'Feature' from collection
+fcHead ::
+  (GeoJSONObject a, BaseType t, Typeable v) =>
+  Getter (FeatureCollection v t) (Maybe (Feature v a t))
+fcHead = to featureCollectionHead'
+  where featureCollectionHead' ::
+          (Typeable v, Typeable a) => FeatureCollection v t -> Maybe (Feature v a t)
+        featureCollectionHead' FCZero = mzero
+        featureCollectionHead' (FCCons f _) = cast f
+
+-- | get the cons of the 'FeatureCollection'
+fcCons :: Getter (FeatureCollection v t) (FeatureCollection v t)
+fcCons = to featureCollectionCons'
+  where
+    featureCollectionCons' (FCCons _ xs) = xs
+    featureCollectionCons' xs = xs
+
+-- | 'Prism' from/to homogenous list
+_FeatureCollectionList ::
+    (GeoJSONObject a, BaseType t, Typeable v) =>
+    Prism' (FeatureCollection v t) [Feature v a t]
+_FeatureCollectionList =
+  prism' fcFromList fcToList
+  where
+    fcToList FCZero = pure mempty
+    fcToList fc = do
+      f <- fc ^. fcHead
+      fs <- fcToList (fc ^. fcCons)
+      return $ mappend (pure f) fs
+    fcFromList = foldl fcInsert FCZero
+
+
+
 -- | a 'FeatureCollection' that can be converted from/to JSON.
 type FeatureCollectionJSON = FeatureCollection Aeson.Value
 
@@ -148,8 +202,8 @@ type FeatureCollectionJSON = FeatureCollection Aeson.Value
 type FeatureCollectionBSON = FeatureCollection Bson.Value
 
 -- | create an empty 'FeatureCollection'
-fcZero :: FeatureCollection v t
-fcZero = FCZero
+fcEmpty :: FeatureCollection v t
+fcEmpty = FCZero
 
 -- | create a 'FeatureCollection' with an initial element.
 fcNew :: (GeoJSONObject a, BaseType t) =>  Feature v a t -> FeatureCollection v t
@@ -167,7 +221,7 @@ instance BaseType t => HasFlatCoordinates (FeatureCollection v t) t where
     where flatCoordinates' FCZero = mempty
           flatCoordinates' (FCCons x xs) =
             mappend (x ^. flatCoordinates) (xs ^. flatCoordinates)
-  
+
 instance (BaseType t) => Eq (FeatureCollectionJSON t) where
   a == b = toJSON a == toJSON b
 
@@ -233,12 +287,12 @@ castFC v = case catMaybes ps of
           parseFCByType (Proxy :: Proxy MultiPolygon) v,
           parseFCByType (Proxy :: Proxy Collection) v
           ]
-        parseFCByType p = fmap FCCons . parseFeatureByType p  
+        parseFCByType p = fmap FCCons . parseFeatureByType p
         parseFeatureByType :: (GeoJSONObject a, BaseType t) =>
                       Proxy a -> Bson.Value -> Maybe (FeatureBSON a t)
         parseFeatureByType _ = cast'
 
-  
+
 parseFC ::
   (BaseType t, Monad m) => Aeson.Value ->
   m (FeatureCollectionJSON t -> FeatureCollectionJSON t)
@@ -255,13 +309,7 @@ parseFC v = case catMaybes ps of
           parseFCByType (Proxy :: Proxy MultiPolygon) v,
           parseFCByType (Proxy :: Proxy Collection) v
           ]
-        parseFCByType p = fmap FCCons . parseFeatureByType p  
+        parseFCByType p = fmap FCCons . parseFeatureByType p
         parseFeatureByType :: (GeoJSONObject a, BaseType t) =>
                       Proxy a -> Aeson.Value -> Maybe (FeatureJSON a t)
         parseFeatureByType _ = Aeson.parseMaybe parseJSON
-
-
-
-
-
-       
