@@ -1,6 +1,6 @@
 name:                geojson-types
-version:             0.1.6.2
-synopsis:            GeoJSON data types including JSON/BSON conversion.
+version:             0.1.7.0
+synopsis:            GeoJSON data types including JSON/BSON persistent conversion.
 homepage:            https://github.com/alios/geojson-types/
 bug-reports:         https://github.com/alios/geojson-types/issues
 license:             BSD3
@@ -16,7 +16,8 @@ cabal-version:       >=1.10
 
 description:
             Provides data types, lens operators and (de)serialization
-            of GeoJSON data to/from JSON and BSON using aeson and bson.
+            of GeoJSON data to/from JSON and BSON and other formats using
+            and supporting the persistent framework..
             .
             This library uses a the lens library a lot. It provides
             'Iso' / 'Prism' to convert from and to GeoJSON objects.
