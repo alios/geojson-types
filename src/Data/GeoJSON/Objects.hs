@@ -24,7 +24,7 @@
 module Data.GeoJSON.Objects
        ( -- * GeoJSON Objects
          -- ** Position
-         Position, _Position,
+         Position, _Position, mapPosition,
          -- ** Point
          Point, _Point,
          -- ** MultiPoint
@@ -42,12 +42,13 @@ module Data.GeoJSON.Objects
          -- ** Collection
          Collection, _GeometryCollection,
          -- * Geometry Collection
-         GeometryCollection, gcNew, gcInsert,
+         GeometryCollection, gcNew, gcInsert, gcMap,
          -- * Support types
          -- ** Bounding Box
          HasFlatCoordinates(..), BoundingBox, boundingBox,
          -- ** Base Types
-         GeoJSON, BaseType, GeoJSONObject
+         GeoJSON (..), mapGeoJSON,
+         BaseType, GeoJSONObject(..), BaseGeoJSONObject
        ) where
 
 import Data.Text.Lazy.Encoding
@@ -76,6 +77,8 @@ import Database.Persist.Sql
 -- | type constraint for the base numeric type used in 'Position'
 type BaseType t =
   (Eq t, Ord t, Num t, Show t, Aeson.FromJSON t, Aeson.ToJSON t, Bson.Val t, PersistField t)
+
+type BaseGeoJSONObject a t = (GeoJSONObject a, BaseType t)
 
 --
 -- Bounding Box
@@ -119,7 +122,6 @@ instance (Eq t) => Eq (Position t) where
 instance BaseType t => Show (Position t) where
   show = showJSON
 
-
 instance BaseType t => Aeson.ToJSON (Position t) where
   toJSON = toJSON . view (from _Position)
 
@@ -133,6 +135,9 @@ instance BaseType t => Bson.Val (Position t) where
     ll <- (,) <$> cast' lat' <*> cast' lon'
     return $ ll ^. _Position
   cast' _ = Nothing
+
+mapPosition :: (BaseType a, BaseType b) => (a -> b) -> Position a -> Position b
+mapPosition f (Position (a, b)) = Position (f a, f b)
 
 instance BaseType t => PersistField (Position t) where
   toPersistValue = toPersistValue . view (from _Position)
@@ -231,7 +236,6 @@ _GeometryCollection :: Iso' (GeometryCollection t) (GeoJSON Collection t)
 _GeometryCollection = iso GeometryCollection (\(GeometryCollection t) -> t)
 
 
-
 --
 -- GeoJSON
 --
@@ -248,13 +252,24 @@ data GeoJSON a t where
   GeometryCollection :: GeometryCollection t -> GeoJSON Collection t
   deriving (Typeable)
 
-instance (GeoJSONObject a, BaseType t) => Eq (GeoJSON a t) where
+mapGeoJSON ::
+  (BaseGeoJSONObject a t, BaseType s) => (t -> s) -> GeoJSON a t -> GeoJSON a s
+mapGeoJSON f (Point p) = Point (mapPosition f p)
+mapGeoJSON f (MultiPoint ps) = MultiPoint $ mapPosition f <$> ps
+mapGeoJSON f (LineString ps) = LineString $ mapPosition f <$> ps
+mapGeoJSON f (LinearRing ls) = LinearRing $ mapGeoJSON f ls
+mapGeoJSON f (MultiLineString lrs) = MultiLineString $ mapGeoJSON f <$> lrs
+mapGeoJSON f (Polygon lrs) = Polygon $ mapGeoJSON f <$> lrs
+mapGeoJSON f (MultiPolygon ps) = MultiPolygon $ mapGeoJSON f <$> ps
+mapGeoJSON f (GeometryCollection gc) = GeometryCollection $ gcMap f gc
+
+instance (BaseGeoJSONObject a t) => Eq (GeoJSON a t) where
   a == b = toJSON a == toJSON b
 
-instance (GeoJSONObject a, BaseType t) => Show (GeoJSON a t) where
+instance (BaseGeoJSONObject a t) => Show (GeoJSON a t) where
   show = showJSON
 
-instance (GeoJSONObject a, BaseType t) => Aeson.ToJSON (GeoJSON a t) where
+instance (BaseGeoJSONObject a t) => Aeson.ToJSON (GeoJSON a t) where
   toJSON p@(Point _) = mkObject pointT p
   toJSON p@(MultiPoint _) = mkObject multiPointT p
   toJSON p@(LineString _) = mkObject lineStringT p
@@ -325,6 +340,11 @@ gcNew = gcInsert GCZero
 gcInsert ::
   (GeoJSONObject a) => GeometryCollection t ->  GeoJSON a t -> GeometryCollection t
 gcInsert = flip GCCons
+
+gcMap :: (BaseType t, BaseType s) =>
+         (t -> s) -> GeometryCollection t -> GeometryCollection s
+gcMap _ GCZero = GCZero
+gcMap f (GCCons x xs) = GCCons (mapGeoJSON f x) $ gcMap f xs
 
 instance BaseType t => Eq (GeometryCollection t) where
   a == b = toJSON a == toJSON b
