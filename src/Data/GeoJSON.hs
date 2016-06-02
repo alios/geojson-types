@@ -1,18 +1,36 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Data.GeoJSON
        ( module Data.GeoJSON.Objects,
          module Data.GeoJSON.Features,
-         module Data.GeoJSON.Classes,
-         readFeatureCollection
+         readFeatureCollection, readFeatureCollectionJSON
        ) where
 
-import Data.GeoJSON.Objects
-import Data.GeoJSON.Features
-import Data.GeoJSON.Classes
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString.Lazy as BL
+
+import qualified Data.Aeson            as Aeson
+import qualified Data.ByteString.Lazy  as BL
+import           Data.GeoJSON.Features
+import           Data.GeoJSON.Objects
+
+import GHC.Generics (Generic)
+import Data.Typeable
+import Control.Lens.TH
+import Data.Text (Text)
+import qualified Data.Aeson.Types            as Aeson
+
+
 
 -- | read a GeoJSON 'FeatureCollection' from file.
 readFeatureCollection ::
-  BaseType t => FilePath -> IO (Either String (FeatureCollection Aeson.Value t))
+  BaseType t => (HasFeature f t) => FilePath ->
+  IO (Either String (FeatureCollection f t))
 readFeatureCollection f = Aeson.eitherDecode <$>  BL.readFile f
 
+readFeatureCollectionJSON ::
+  (BaseGeoJSONObject a t) =>  FilePath ->
+  IO (Either String (FeatureCollectionJSON a t))
+readFeatureCollectionJSON = readFeatureCollection
