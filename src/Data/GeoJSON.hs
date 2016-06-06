@@ -16,13 +16,6 @@ import qualified Data.ByteString.Lazy  as BL
 import           Data.GeoJSON.Features
 import           Data.GeoJSON.Objects
 
-import GHC.Generics (Generic)
-import Data.Typeable
-import Control.Lens.TH
-import Data.Text (Text)
-import qualified Data.Aeson.Types            as Aeson
-
-
 
 -- | read a GeoJSON 'FeatureCollection' from file.
 readFeatureCollection ::

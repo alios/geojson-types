@@ -25,7 +25,7 @@
 ----------------------------------------------------------------------------
 module Data.GeoJSON.Features
        ( -- * Feature
-         HasFeature(..), Feature, mapFeature,
+         HasFeature(..), Feature, _Feature, mapFeature,
          -- * JSON Feature
          HasFeatureJSON(..), FeatureJSON, _FeatureJSON, mapFeatureJSON,
          -- * Feature Collection
@@ -33,13 +33,13 @@ module Data.GeoJSON.Features
          _FeatureCollection, mapFeatureCollection
        ) where
 
-
 import           Control.Lens.Getter
 import           Control.Lens.Lens
 import           Control.Lens.Setter  hiding ((.=))
 import           Control.Lens.TH
 import           Data.Aeson           ((.:), (.=))
 import qualified Data.Aeson           as Aeson
+import qualified Data.Bson            as Bson
 import           Data.GeoJSON.Intern
 import           Data.GeoJSON.Objects
 import           Data.Typeable
@@ -55,6 +55,8 @@ import           GHC.Generics         (Generic)
 
 newtype Feature f t
   = Feature (FeatureProperties f, GeoJSON (FeatureType f) t)
+
+
 
 class ( BaseType t
       , BaseGeoJSONObject (FeatureType f) t
@@ -107,6 +109,9 @@ instance HasFeature f t => PersistField (Feature f t) where
 instance HasFeature f t => PersistFieldSql (Feature f t) where
   sqlType _ = SqlString
 
+instance HasFeature f t => Bson.Val (Feature  f t) where
+  val = jsonToBson
+  cast' = jsonFromBson
 
 updateFeatureJSON :: (HasFeature f t, Monad m) => Aeson.Value -> f -> m f
 updateFeatureJSON b a = case updateFeatureJSON' b a of
@@ -197,7 +202,17 @@ instance (HasFeature f t) => Aeson.FromJSON (FeatureCollection f t) where
 instance (HasFeature f t) => Show (FeatureCollection f t) where
   show = showJSON
 
+instance (HasFeature f t) => Eq (FeatureCollection f t) where
+  a == b = Aeson.toJSON a == Aeson.toJSON b
+
 instance (HasFeature f t) => HasFlatCoordinates (FeatureCollection f t) t where
   flatCoordinates = to gfc
     where gfc (FeatureCollection fc) =
             mconcat . fmap (view flatCoordinates) . toList $ fc
+
+instance HasFeature f t => Bson.Val (FeatureCollection  f t) where
+  val = jsonToBson
+  cast' = jsonFromBson
+
+
+makePrisms ''Feature

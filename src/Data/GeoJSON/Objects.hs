@@ -67,6 +67,7 @@ import Control.Monad
 import Data.GeoJSON.Intern
 import Database.Persist
 import Database.Persist.Sql
+import qualified Data.Bson as Bson
 
 --
 -- BaseType
@@ -133,6 +134,10 @@ instance BaseType t => PersistField (Position t) where
 
 instance BaseType t => PersistFieldSql (Position t) where
   sqlType _ = SqlString
+
+instance BaseType t => Bson.Val (Position t) where
+  val = jsonToBson
+  cast' = jsonFromBson
 
 instance (BaseType t) => HasFlatCoordinates (Position t) t where
   flatCoordinates = to pure
@@ -280,6 +285,10 @@ instance (GeoJSONObject a, BaseType t) => PersistField (GeoJSON a t) where
 instance (GeoJSONObject a, BaseType t) => PersistFieldSql (GeoJSON a t) where
   sqlType _ = SqlString
 
+instance (GeoJSONObject a, BaseType t) => Bson.Val (GeoJSON a t) where
+  val = jsonToBson
+  cast' = jsonFromBson
+
 
 --
 -- GeometryCollection
@@ -332,6 +341,10 @@ instance BaseType t => PersistField (GeometryCollection t) where
 
 instance BaseType t => PersistFieldSql (GeometryCollection t) where
   sqlType _ = SqlString
+
+instance BaseType t => Bson.Val (GeometryCollection t) where
+  val = jsonToBson
+  cast' = jsonFromBson
 
 --
 -- GeoJSONObject

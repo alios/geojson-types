@@ -5,12 +5,52 @@ module Data.GeoJSON.Intern where
 import           Data.Aeson
 import qualified Data.Aeson              as Aeson
 import qualified Data.Aeson.Types        as Aeson
+import           Data.Bson               (Field (..))
+import qualified Data.Bson               as Bson
+import           Data.Scientific
 import           Data.Text               (Text)
 import qualified Data.Text               as T
 import qualified Data.Text.Lazy          as TL
 import           Data.Text.Lazy.Encoding
+import qualified Data.Vector             as V
 import           Database.Persist
 import           GHC.Exts
+
+
+jsonToBson :: (ToJSON a) => a -> Bson.Value
+jsonToBson a = case toJSON a of
+  (Bool b) -> Bson.Bool b
+  (Number n) -> case floatingOrInteger n of
+    Left f -> Bson.Float f
+    Right i -> Bson.Int64 i
+  (String t) -> Bson.String t
+  (Array v) ->  Bson.Array . V.toList $ jsonToBson <$> v
+  Null -> Bson.Null
+  (Object o) -> Bson.Doc [ k := v | (k,v) <- toList . fmap jsonToBson $ o]
+
+jsonFromBson :: FromJSON a => Bson.Value -> Maybe a
+jsonFromBson a =
+  case fromJSON <$> jsonFromBson' a of
+    Just (Success v) -> pure v
+    _ -> Nothing
+
+
+jsonFromBson' :: Bson.Value -> Maybe Value
+jsonFromBson' (Bson.Bool b) = pure . Bool $ b
+jsonFromBson' (Bson.Float f) = pure . Number . fromFloatDigits $ f
+jsonFromBson' (Bson.Int32 i) = pure . Number . fromInteger . toInteger $ i
+jsonFromBson' (Bson.Int64 i) = pure . Number . fromInteger . toInteger $ i
+jsonFromBson' (Bson.String t) = pure . String $ t
+jsonFromBson' (Bson.Array l) =
+  fmap (Array . V.fromList) . sequence $ jsonFromBson' <$> l
+jsonFromBson' (Bson.Doc d) =
+  let mapFields f = case jsonFromBson' . Bson.value $ f of
+        Nothing -> Nothing
+        Just v -> pure (Bson.label f, v)
+      kvl = sequence $ mapFields <$> d
+  in fmap toJSON kvl
+jsonFromBson' Bson.Null = pure Null
+jsonFromBson' _ = Nothing
 
 jsonToPersistValue :: (ToJSON a) => a -> PersistValue
 jsonToPersistValue p = case jsonToPersistValue' . toJSON $ p of
@@ -43,6 +83,8 @@ persistFieldToValue :: (PersistField a, FromJSON b) => a  -> Either T.Text b
 persistFieldToValue a = case fromJSON . persistFieldToValue' $ a of
   Error e -> Left . T.pack $ e
   Success b -> Right b
+
+
 
 
 
