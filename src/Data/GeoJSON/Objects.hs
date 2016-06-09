@@ -68,6 +68,8 @@ import Data.GeoJSON.Intern
 import Database.Persist
 import Database.Persist.Sql
 import qualified Data.Bson as Bson
+import Data.Vector (Vector)
+import qualified Data.Vector as V
 
 --
 -- BaseType
@@ -142,8 +144,6 @@ instance BaseType t => Bson.Val (Position t) where
 instance (BaseType t) => HasFlatCoordinates (Position t) t where
   flatCoordinates = to pure
 
-
-
 --
 -- GeoJSON Objects
 --
@@ -162,15 +162,15 @@ data MultiPoint
 
 -- | convert from/to 'MultiPoint'
 _MultiPoint :: Iso' [Position t] (GeoJSON MultiPoint t)
-_MultiPoint = iso MultiPoint (\(MultiPoint ps) -> ps)
+_MultiPoint = iso (MultiPoint . V.fromList) (\(MultiPoint ps) -> V.toList ps)
 
 -- | see also: <http://geojson.org/geojson-spec.html#linestring>
 data LineString
 
 -- | convert from/to 'LineString'. Must have 2 or more elements.
 _LineString :: Prism' [Position t] (GeoJSON LineString t)
-_LineString = prism' (\(LineString ps) -> ps) toLS
-  where toLS ls@(_ : _ : _) = pure $ LineString ls
+_LineString = prism' (\(LineString ps) -> V.toList ps) toLS
+  where toLS ls@(_ : _ : _) = pure . LineString . V.fromList $ ls
         toLS _ = Nothing
 
 -- | see also: <http://geojson.org/geojson-spec.html#linestring>
@@ -204,7 +204,8 @@ data MultiLineString
 
 -- | convert from/to 'MultiLineString'
 _MultiLineString :: Iso' [GeoJSON LineString t] (GeoJSON MultiLineString t)
-_MultiLineString = iso MultiLineString (\(MultiLineString lss) -> lss)
+_MultiLineString =
+  iso (MultiLineString . V.fromList) (\(MultiLineString lss) -> V.toList lss)
 
 
 -- | see also: http://geojson.org/geojson-spec.html#polygon
@@ -212,14 +213,14 @@ data Polygon
 
 -- | convert from/to 'Polygon'
 _Polygon :: Iso' [GeoJSON LinearRing t] (GeoJSON Polygon t)
-_Polygon = iso Polygon (\(Polygon lr) -> lr)
+_Polygon = iso (Polygon . V.fromList) (\(Polygon lr) -> V.toList lr)
 
 -- | see also: http://geojson.org/geojson-spec.html#multipolygon
 data MultiPolygon
 
 -- | convert from/to 'MultiPolygon'
 _MultiPolygon :: Iso' [GeoJSON Polygon t] (GeoJSON MultiPolygon t)
-_MultiPolygon = iso MultiPolygon (\(MultiPolygon lr) -> lr)
+_MultiPolygon = iso (MultiPolygon . V.fromList) (\(MultiPolygon lr) -> V.toList lr)
 
 -- | see also: http://geojson.org/geojson-spec.html#geometry-collection
 data Collection
@@ -236,12 +237,12 @@ _GeometryCollection = iso GeometryCollection (\(GeometryCollection t) -> t)
 -- | the base type of all GeoJSON object. see also 'GeoJSONObject'
 data GeoJSON a t where
   Point :: Position t -> GeoJSON Point t
-  MultiPoint :: [Position t] -> GeoJSON MultiPoint t
-  LineString :: [Position t] -> GeoJSON LineString t
+  MultiPoint :: Vector (Position t) -> GeoJSON MultiPoint t
+  LineString :: Vector (Position t) -> GeoJSON LineString t
   LinearRing :: GeoJSON LineString t -> GeoJSON LinearRing t
-  MultiLineString :: [GeoJSON LineString t] -> GeoJSON MultiLineString t
-  Polygon :: [GeoJSON LinearRing t] -> GeoJSON Polygon t
-  MultiPolygon :: [GeoJSON Polygon t] -> GeoJSON MultiPolygon t
+  MultiLineString :: Vector (GeoJSON LineString t) -> GeoJSON MultiLineString t
+  Polygon :: Vector (GeoJSON LinearRing t) -> GeoJSON Polygon t
+  MultiPolygon :: Vector (GeoJSON Polygon t) -> GeoJSON MultiPolygon t
   GeometryCollection :: GeometryCollection t -> GeoJSON Collection t
   deriving (Typeable)
 
@@ -255,6 +256,8 @@ mapGeoJSON f (MultiLineString lrs) = MultiLineString $ mapGeoJSON f <$> lrs
 mapGeoJSON f (Polygon lrs) = Polygon $ mapGeoJSON f <$> lrs
 mapGeoJSON f (MultiPolygon ps) = MultiPolygon $ mapGeoJSON f <$> ps
 mapGeoJSON f (GeometryCollection gc) = GeometryCollection $ gcMap f gc
+
+
 
 instance (BaseGeoJSONObject a t) => Eq (GeoJSON a t) where
   a == b = toJSON a == toJSON b
