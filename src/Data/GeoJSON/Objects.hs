@@ -386,7 +386,6 @@ class (Typeable a) => GeoJSONObject a where
   type GeoJSONObjectType a t :: *
   _GeoObject :: BaseType t => Prism' (GeoJSONObjectType a t) (GeoJSON a t)
   parseGeoJSON :: BaseType t => Aeson.Value -> Aeson.Parser (GeoJSON a t)
-  fromPersist :: BaseType t => PersistValue -> Maybe (GeoJSON a t)
   flatCoordinatesGeoJSON ::
     (BaseType t) => Getter (GeoJSON a t) [Position t]
 
@@ -395,20 +394,18 @@ instance GeoJSONObject Point where
   _GeoObject = prism' (view $ from _Point) (pure . view _Point)
   parseGeoJSON = parseGeoJSONbyName pointT
   flatCoordinatesGeoJSON = from _Point . to pure
-  fromPersist = toGeoPersist pointT
 
 instance GeoJSONObject MultiPoint where
   type GeoJSONObjectType MultiPoint t = [Position t]
   _GeoObject = prism' (view $ from _MultiPoint) (pure . view _MultiPoint)
   parseGeoJSON = parseGeoJSONbyName multiPointT
-  fromPersist = toGeoPersist multiPointT
+--  fromPersist = toGeoPersist multiPointT
   flatCoordinatesGeoJSON = from _MultiPoint
 
 instance GeoJSONObject LineString where
   type GeoJSONObjectType LineString t = [Position t]
   _GeoObject = prism' (review _LineString) (preview _LineString)
   parseGeoJSON = parseGeoJSONbyName lineStringT
-  fromPersist = toGeoPersist lineStringT
   flatCoordinatesGeoJSON = re _LineString
 
 instance GeoJSONObject LinearRing where
@@ -417,7 +414,6 @@ instance GeoJSONObject LinearRing where
     (review _GeoObject . review _LinearRing)
     (preview _LineString >=> preview _LinearRing )
   parseGeoJSON = parseGeoJSONbyName linearRingT
-  fromPersist = toGeoPersist linearRingT
   flatCoordinatesGeoJSON = re _LinearRing . flatCoordinatesGeoJSON
 
 instance GeoJSONObject MultiLineString where
@@ -426,7 +422,6 @@ instance GeoJSONObject MultiLineString where
     (traverseObjectsWithIso _MultiLineString)
     (traverseGeoObjectsWithGetter _MultiLineString )
   parseGeoJSON = parseGeoJSONbyName multiLineStringT
-  fromPersist = toGeoPersist multiLineStringT
   flatCoordinatesGeoJSON =
     flatCoordinatesList (from _MultiLineString)
 
@@ -436,7 +431,6 @@ instance GeoJSONObject Polygon where
     (traverseObjectsWithIso _Polygon)
     (traverseGeoObjectsWithGetter _Polygon )
   parseGeoJSON = parseGeoJSONbyName polygonT
-  fromPersist = toGeoPersist polygonT
   flatCoordinatesGeoJSON = flatCoordinatesList (re _Polygon)
 
 instance GeoJSONObject MultiPolygon where
@@ -445,7 +439,6 @@ instance GeoJSONObject MultiPolygon where
     (traverseObjectsWithIso _MultiPolygon)
     (traverseGeoObjectsWithGetter _MultiPolygon )
   parseGeoJSON = parseGeoJSONbyName multiPolygonT
-  fromPersist = toGeoPersist multiPolygonT
   flatCoordinatesGeoJSON = flatCoordinatesList (re _MultiPolygon)
 
 instance GeoJSONObject Collection where
@@ -454,8 +447,6 @@ instance GeoJSONObject Collection where
     (view (from _GeometryCollection))
     (pure . view _GeometryCollection)
   parseGeoJSON = fmap (view _GeometryCollection) . parseJSON
-  fromPersist = fmap (view _GeometryCollection) .
-    either (const Nothing) pure . fromPersistValue
   flatCoordinatesGeoJSON =  re _GeometryCollection . to colFlatPs
     where colFlatPs GCZero = mempty
           colFlatPs (GCCons x xs) =
@@ -519,21 +510,6 @@ parseGeoJSONbyName n =  Aeson.withObject pointT $ \o -> do
     else (o .: coordinatesT) >>=
          maybe (fail $ "unable to parse coordinates of " ++ n) return  .
          preview _GeoObject
-
-
-toGeoPersist ::
-  (GeoJSONObject a, PersistField (GeoJSONObjectType a t), BaseType t) =>
-  String -> PersistValue -> Maybe (GeoJSON a t)
-toGeoPersist n (PersistMap m) = do
-  t <- lookup typeT m >>=
-    either (const Nothing) pure . fromPersistValue
-  if t /= n then fail $ "unable to parse type " ++ n
-    else do
-    gs <- lookup coordinatesT m >>=
-      either (const Nothing) pure . fromPersistValue
-    preview _GeoObject gs
-toGeoPersist _ _ = Nothing
-
 
 parseGCCons' ::
   (BaseType t) => Aeson.Value -> [GeometryCollection t -> GeometryCollection t]
