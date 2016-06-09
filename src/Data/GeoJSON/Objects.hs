@@ -130,6 +130,11 @@ instance BaseType t => Aeson.FromJSON (Position t) where
 mapPosition :: (BaseType a, BaseType b) => (a -> b) -> Position a -> Position b
 mapPosition f (Position (a, b)) = Position (f a, f b)
 
+bimapPosition :: (BaseType t) =>
+                 (t -> t -> t) -> Position t -> Position t -> Position t
+bimapPosition f (Position (ax, ay)) (Position (bx, by)) =
+  Position (f ax bx, f ay by)
+
 instance BaseType t => PersistField (Position t) where
   toPersistValue = jsonToPersistValue
   fromPersistValue = persistFieldToValue
@@ -143,6 +148,16 @@ instance BaseType t => Bson.Val (Position t) where
 
 instance (BaseType t) => HasFlatCoordinates (Position t) t where
   flatCoordinates = to pure
+
+
+instance (BaseType t) => Num (Position t) where
+  (+) = bimapPosition (+)
+  (-) = bimapPosition (-)
+  (*) = bimapPosition (*)
+  abs = mapPosition abs
+  signum = mapPosition signum
+  fromInteger i = Position (fromInteger i, 0)
+
 
 --
 -- GeoJSON Objects
@@ -246,6 +261,11 @@ data GeoJSON a t where
   GeometryCollection :: GeometryCollection t -> GeoJSON Collection t
   deriving (Typeable)
 
+instance Monoid (GeoJSON Collection t) where
+  mempty = GeometryCollection mempty
+  mappend (GeometryCollection a) (GeometryCollection b) =
+    GeometryCollection $ mappend a b
+
 mapGeoJSON ::
   (BaseGeoJSONObject a t, BaseType s) => (t -> s) -> GeoJSON a t -> GeoJSON a s
 mapGeoJSON f (Point p) = Point (mapPosition f p)
@@ -303,6 +323,14 @@ data GeometryCollection t where
   GCCons  :: GeoJSONObject a =>
               GeoJSON a t -> GeometryCollection t -> GeometryCollection t
   deriving (Typeable)
+
+
+instance Monoid (GeometryCollection t) where
+  mempty = GCZero
+  mappend GCZero  GCZero = GCZero
+  mappend GCZero a@(GCCons _ _) = a
+  mappend a@(GCCons _ _) GCZero = a
+  mappend a@(GCCons _ _) (GCCons bv bs) = mappend (GCCons bv a) bs
 
 -- | create a new 'GeometryCollection' with initial element
 gcNew :: (GeoJSONObject a) => GeoJSON a t -> GeometryCollection t
