@@ -15,7 +15,11 @@
 --
 ----------------------------------------------------------------------------
 
-module Data.GeoJSON.Classes where
+module Data.GeoJSON.Classes
+ ( BaseType, IsGeometry(..)
+ , PositionStructureClass, VectorStructureClass
+ , FeatureId, HasFeatureId(..), HasProperties(..)
+ ) where
 
 import           Control.Applicative
 import           Control.Lens.Getter
