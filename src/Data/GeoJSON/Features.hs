@@ -77,8 +77,6 @@ instance HasProperties (Feature g a) where
 instance HasProperties (FeatureObject a) where
   properties = featureObjectProperties
 
-
-
 instance (HasBoundingBox(Geometry g a) a) =>
   HasBoundingBox (Feature g a) a where
   boundingBox f = maybe mempty boundingBox $ view featureGeometry f
@@ -86,7 +84,6 @@ instance (HasBoundingBox(Geometry g a) a) =>
 instance (HasBoundingBox(GeometryObject a) a) =>
   HasBoundingBox (FeatureObject a) a where
   boundingBox f = maybe mempty boundingBox $ view featureObjectGeometry f
-
 
 instance (IsGeometry g i a) => ToJSON (Feature g a) where
   toJSON = hasFeatureToJSON
@@ -144,14 +141,14 @@ instance Monoid (FeatureCollection g a) where
     FeatureCollection $ mappend a b
 
 _FeatureCollectionObject ::
-  (BaseType a, Applicative f, Foldable f, Monoid (f (FeatureObject a))) =>
+  (BaseType a, ListLike f (FeatureObject a)) =>
   Prism' (FeatureCollectionObject a) (f (FeatureObject a))
 _FeatureCollectionObject = prism' f t
   where f = FeatureCollectionObject . foldMap pure
         t (FeatureCollectionObject a) = pure $ foldMap pure a
 
 _FeatureCollection ::
-  (BaseType a, Applicative f, Foldable f, Monoid (f (Feature g a))) =>
+  (BaseType a, ListLike f (Feature g a)) =>
   Prism' (FeatureCollection g a) (f (Feature g a))
 _FeatureCollection = prism' f t
   where f = FeatureCollection . foldMap pure

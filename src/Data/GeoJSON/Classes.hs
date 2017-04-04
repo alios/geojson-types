@@ -16,7 +16,7 @@
 ----------------------------------------------------------------------------
 
 module Data.GeoJSON.Classes
- ( BaseType, IsGeometry(..)
+ ( BaseType, IsGeometry(..), ListLike
  , PositionStructureClass, VectorStructureClass
  , FeatureId, HasFeatureId(..), HasProperties(..)
  ) where
@@ -40,12 +40,14 @@ class (ToJSON i, FromJSON i, BaseType a) => IsGeometry g i a | g a -> i where
   _Geometry     :: Iso' i (Geometry g a)
   geometryType  :: Proxy (g, a) -> Text
 
-type PositionStructureClass fc a =
-  (BaseType a, Traversable fc, Applicative fc, Monoid (fc a))
+type ListLike f a =
+  (Foldable f, Applicative f, Monoid (f a), Traversable f)
+
+type PositionStructureClass fc a = (BaseType a, ListLike fc a)
 
 type VectorStructureClass fv fc a =
-  ( PositionStructureClass fc a, Traversable fv
-  , Applicative fv, Monoid (fv (fc a)), Monoid (fv (fv (fc a)))
+  ( PositionStructureClass fc a, ListLike fv a
+  , Monoid (fv (fc a)), Monoid (fv (fv (fc a)))
   )
 
 

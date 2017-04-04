@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -15,19 +16,21 @@
 
 module Data.GeoJSON.Geometries
   ( Point, _Point
-  , MultiPoint, _MultiPoint
-  , LineString, _LineString
-  , Polygon, _Polygon
-  , MultiLineString, _MultiLineString
-  , MultiPolygon, _MultiPolygon
-  , GeometryObject
+  , MultiPoint, _MultiPoint, _MultiPoints
+  , LineString, _LineString, _LineStringPoints
+  , Polygon, _Polygon, _PolygonPoints
+  , MultiLineString, _MultiLineString, _MultiLineStrings
+  , MultiPolygon, _MultiPolygon, _MultiPolygons
+  , GeometryObject, _GeometryObject
   , _PointObject, _MultiPointObject, _LineStringObject, _PolygonObject
   , _MultiLineStringObject, _MultiPolygonObject, _GeometryCollection
   ) where
 
 import           Control.Applicative
+
 import           Control.Lens.Iso
 import           Control.Lens.Prism
+import           Control.Lens.Review
 import           Data.Aeson            as Aeson
 import           Data.Aeson.Types      as Aeson
 import           Data.GeoJSON.Classes
@@ -39,6 +42,12 @@ import           Data.Text             (Text)
 import           Data.Vector           (Vector)
 import qualified Data.Vector           as V
 
+class HasGeometryObject g where
+  toGeometryObject :: Geometry g a -> GeometryObject a
+  fromGeometryObject :: GeometryObject a -> Maybe (Geometry g a)
+
+_GeometryObject :: HasGeometryObject g => Prism' (GeometryObject a) (Geometry g a)
+_GeometryObject = prism' toGeometryObject fromGeometryObject
 
 data Point
 instance BaseType a => IsGeometry Point (Position a) a where
@@ -51,6 +60,11 @@ instance BaseType a => IsGeometry Point (Position a) a where
 _Point :: (PositionStructureClass fc a) =>
   Prism' (GeometryStructure Point a fv fc) (Geometry Point a)
 _Point = _Position . _Geometry
+
+instance HasGeometryObject Point where
+  toGeometryObject = GeometryPoint
+  fromGeometryObject (GeometryPoint a) = pure a
+  fromGeometryObject _                 = empty
 
 instance Functor (Geometry Point) where
   fmap f (Point a) = Point $ fmap f a
@@ -72,6 +86,19 @@ _MultiPoint :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure MultiPoint a fv fc) (Geometry MultiPoint a)
 _MultiPoint = _PositionVector . _Geometry
 
+_MultiPoints ::
+  (BaseType a, ListLike f (Geometry Point a)) =>
+  Iso' (f (Geometry Point a)) (Geometry MultiPoint a)
+_MultiPoints = iso
+  (MultiPoint . foldMap (pure . review _Geometry))
+  (foldMap (pure . Point)  . review _Geometry)
+
+
+instance HasGeometryObject MultiPoint where
+  toGeometryObject = GeometryMultiPoint
+  fromGeometryObject (GeometryMultiPoint a) = pure a
+  fromGeometryObject _                      = empty
+
 instance Functor (Geometry MultiPoint) where
   fmap f (MultiPoint a) = MultiPoint $ fmap (fmap f) a
 
@@ -91,6 +118,18 @@ instance BaseType a => IsGeometry LineString (PositionVector a) a where
 _LineString :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure LineString a fv fc) (Geometry LineString a)
 _LineString = _PositionVector . _Geometry
+
+_LineStringPoints ::
+  (BaseType a, ListLike f (Geometry Point a)) =>
+  Iso' (f (Geometry Point a)) (Geometry LineString a)
+_LineStringPoints = iso
+  (LineString . foldMap (pure . review _Geometry))
+  (foldMap (pure . Point)  . review _Geometry)
+
+instance HasGeometryObject LineString where
+  toGeometryObject = GeometryLineString
+  fromGeometryObject (GeometryLineString a) = pure a
+  fromGeometryObject _                      = empty
 
 instance Functor (Geometry LineString) where
   fmap f (LineString a) = LineString $ fmap (fmap f) a
@@ -112,6 +151,21 @@ _Polygon :: (VectorStructureClass fv fc a) =>
 _Polygon = _PositionVector . _Geometry
 -- TODO: check for closed ring
 
+
+_PolygonPoints ::
+  (BaseType a, ListLike f (Geometry Point a)) =>
+  Prism' (f (Geometry Point a)) (Geometry Polygon a)
+_PolygonPoints = prism'
+  (foldMap (pure . Point)  . review _Geometry)
+  (pure . Polygon . foldMap (pure . review _Geometry))
+  -- TODO check for closed ring
+
+
+instance HasGeometryObject Polygon where
+  toGeometryObject = GeometryPolygon
+  fromGeometryObject (GeometryPolygon a) = pure a
+  fromGeometryObject _                   = empty
+
 instance Functor (Geometry Polygon) where
   fmap f (Polygon a) = Polygon $ fmap (fmap f) a
 
@@ -132,6 +186,20 @@ _MultiLineString :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure MultiLineString a fv fc) (Geometry MultiLineString a)
 _MultiLineString = _PositionVector2 . _Geometry
 
+
+_MultiLineStrings ::
+  (BaseType a, ListLike f (Geometry LineString a)) =>
+  Iso' (f (Geometry LineString a)) (Geometry MultiLineString a)
+_MultiLineStrings = iso
+  (MultiLineString . foldMap (pure . review _Geometry))
+  (foldMap (pure . LineString)  . review _Geometry)
+
+
+instance HasGeometryObject MultiLineString where
+  toGeometryObject = GeometryMultiLineString
+  fromGeometryObject (GeometryMultiLineString a) = pure a
+  fromGeometryObject _                           = empty
+
 instance Functor (Geometry MultiLineString) where
   fmap f (MultiLineString a) = MultiLineString $ fmap (fmap (fmap f)) a
 
@@ -147,6 +215,19 @@ instance BaseType a => IsGeometry MultiPolygon (PositionVector2 a) a where
     PositionVector2Structure fv fc a
   _Geometry = iso MultiPolygon (\(MultiPolygon a) -> a)
   geometryType = const _multiPolygon
+
+_MultiPolygons ::
+  (BaseType a, ListLike f (Geometry Polygon a)) =>
+  Iso' (f (Geometry Polygon a)) (Geometry MultiPolygon a)
+
+_MultiPolygons = iso
+  (MultiPolygon . foldMap (pure . review _Geometry))
+  (foldMap (pure . Polygon)  . review _Geometry)
+
+instance HasGeometryObject MultiPolygon where
+  toGeometryObject = GeometryMultiPolygon
+  fromGeometryObject (GeometryMultiPolygon a) = pure a
+  fromGeometryObject _                        = empty
 
 instance Functor (Geometry MultiPolygon) where
   fmap f (MultiPolygon a) = MultiPolygon $ fmap (fmap (fmap f)) a
@@ -225,7 +306,7 @@ _MultiPolygonObject = _MultiPolygon .
   iso GeometryMultiPolygon (\(GeometryMultiPolygon a) -> a)
 
 _GeometryCollection ::
-  (BaseType a, Applicative f, Foldable f, Monoid (f (GeometryObject a))) =>
+  (BaseType a, ListLike f (GeometryObject a)) =>
   Prism' (GeometryObject a) (f (GeometryObject a))
 _GeometryCollection = prism' f t
   where f = GeometryCollection . foldMap pure

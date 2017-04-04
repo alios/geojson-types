@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TemplateHaskell        #-}
@@ -14,7 +15,7 @@
 ----------------------------------------------------------------------------
 
 module Data.GeoJSON.Position
- ( Position, PositionStructure, _Position, toPosition3
+ ( Position, PositionStructure, _Position, toPosition3, normalizePosition
  , PositionVector, PositionVectorStructure, _PositionVector
  , PositionVector2, PositionVector2Structure, _PositionVector2
  , HasBoundingBox(..), BoundingBox, _BoundingBox
@@ -41,6 +42,37 @@ data Position a
 instance Functor Position where
   fmap f (Position2 (x,y)) = Position2 (f x, f y)
   fmap f (Position3 (x,y,z)) = Position3 (f x, f y, f z)
+
+toPosition3 :: Num a => Position a -> Position a
+toPosition3 (Position2 (x,y)) = Position3 (x,y, 0)
+toPosition3 p@(Position3 _)   = p
+
+-- | transforms 'Position' with z/height component 0 to 'Position2'
+normalizePosition :: (Num a, Eq a) => Position a -> Position a
+normalizePosition (Position3 (x,y,0)) = Position2 (x,y)
+normalizePosition p = p
+
+
+mapNormalizedPosition :: (Num a, Eq a) =>
+  (Position a -> Position a -> Position a) ->
+  Position a -> Position a -> Position a
+mapNormalizedPosition f a@(Position2 _) b@(Position2 _) =
+  f a b
+mapNormalizedPosition f a@(Position3 _) b@(Position3 _) =
+  normalizePosition $ f a b
+mapNormalizedPosition f a@(Position2 _) b@(Position3 _) =
+  mapNormalizedPosition f (toPosition3 a) b
+mapNormalizedPosition f a@(Position3 _) b@(Position2 _) =
+  mapNormalizedPosition f a (toPosition3 b)
+
+instance (Eq a, Num a) => Num (Position a) where
+  a + b = mapNormalizedPosition (+) a b
+  a - b = mapNormalizedPosition (+) a b
+  a * b = mapNormalizedPosition (*) a b
+  abs = fmap abs
+  signum = fmap signum
+  fromInteger a =
+    let i = fromInteger a in Position3 (i,i,i)
 
 newtype BoundingBox a =
   BoundingBox (Position a, Position a)
@@ -72,9 +104,6 @@ _Position :: PositionStructureClass fc a =>
   Prism' (PositionStructure fc a) (Position a)
 _Position = prism' fromPosition toPosition
 
-toPosition3 :: Num a => Position a -> Position a
-toPosition3 (Position2 (x,y)) = Position3 (x,y, 0)
-toPosition3 p@(Position3 _)   = p
 
 
 toPosition :: (PositionStructureClass fc a) =>
