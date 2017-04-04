@@ -16,6 +16,7 @@ module Data.GeoJSON.Features
   ( HasFeature(..), Feature, nullFeature
   , HasFeatureObject(..), FeatureObject, nullFeatureObject
   , FeatureCollection, _FeatureCollection
+  , FeatureCollectionObject, _FeatureCollectionObject
   ) where
 
 import           Control.Applicative
@@ -45,7 +46,7 @@ data FeatureObject a = FeatureObject {
   _featureObjectId         :: Maybe FeatureId,
   _featureObjectGeometry   :: Maybe (GeometryObject a),
   _featureObjectProperties :: Maybe Object
-  }
+  } deriving (Eq, Show)
 
 makeClassy ''FeatureObject
 
@@ -134,6 +135,7 @@ newtype FeatureCollection g a =
 
 newtype FeatureCollectionObject a =
   FeatureCollectionObject (Vector (FeatureObject a))
+  deriving (Eq, Show)
 
 instance Monoid (FeatureCollection g a) where
   mempty = FeatureCollection mempty
