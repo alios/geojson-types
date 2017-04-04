@@ -52,6 +52,9 @@ _Point :: (PositionStructureClass fc a) =>
   Prism' (GeometryStructure Point a fv fc) (Geometry Point a)
 _Point = _Position . _Geometry
 
+instance Functor (Geometry Point) where
+  fmap f (Point a) = Point $ fmap f a
+
 instance BaseType a => HasBoundingBox (Geometry Point a) a where
   boundingBox (Point a)   = boundingBox a
 
@@ -68,6 +71,9 @@ instance  BaseType a => IsGeometry MultiPoint (PositionVector a) a where
 _MultiPoint :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure MultiPoint a fv fc) (Geometry MultiPoint a)
 _MultiPoint = _PositionVector . _Geometry
+
+instance Functor (Geometry MultiPoint) where
+  fmap f (MultiPoint a) = MultiPoint $ fmap (fmap f) a
 
 instance BaseType a => HasBoundingBox (Geometry MultiPoint a) a where
   boundingBox (MultiPoint a)   = foldMap boundingBox a
@@ -86,6 +92,9 @@ _LineString :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure LineString a fv fc) (Geometry LineString a)
 _LineString = _PositionVector . _Geometry
 
+instance Functor (Geometry LineString) where
+  fmap f (LineString a) = LineString $ fmap (fmap f) a
+
 instance BaseType a => HasBoundingBox (Geometry LineString a) a where
   boundingBox (LineString a)   = foldMap boundingBox a
 
@@ -102,6 +111,9 @@ _Polygon :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure Polygon a fv fc) (Geometry Polygon a)
 _Polygon = _PositionVector . _Geometry
 -- TODO: check for closed ring
+
+instance Functor (Geometry Polygon) where
+  fmap f (Polygon a) = Polygon $ fmap (fmap f) a
 
 instance BaseType a => HasBoundingBox (Geometry Polygon a) a where
   boundingBox (Polygon a)   = foldMap boundingBox a
@@ -120,6 +132,8 @@ _MultiLineString :: (VectorStructureClass fv fc a) =>
   Prism' (GeometryStructure MultiLineString a fv fc) (Geometry MultiLineString a)
 _MultiLineString = _PositionVector2 . _Geometry
 
+instance Functor (Geometry MultiLineString) where
+  fmap f (MultiLineString a) = MultiLineString $ fmap (fmap (fmap f)) a
 
 instance BaseType a => HasBoundingBox (Geometry MultiLineString a) a where
   boundingBox (MultiLineString a)   =
@@ -133,6 +147,9 @@ instance BaseType a => IsGeometry MultiPolygon (PositionVector2 a) a where
     PositionVector2Structure fv fc a
   _Geometry = iso MultiPolygon (\(MultiPolygon a) -> a)
   geometryType = const _multiPolygon
+
+instance Functor (Geometry MultiPolygon) where
+  fmap f (MultiPolygon a) = MultiPolygon $ fmap (fmap (fmap f)) a
 
 instance BaseType a => HasBoundingBox (Geometry MultiPolygon a) a where
   boundingBox (MultiPolygon a)   =
@@ -160,6 +177,14 @@ data GeometryObject a
   deriving (Eq, Show)
 
 
+instance Functor GeometryObject where
+  fmap f (GeometryPoint a)           = GeometryPoint $ fmap f a
+  fmap f (GeometryMultiPoint a)      = GeometryMultiPoint $ fmap f a
+  fmap f (GeometryLineString a)      = GeometryLineString $ fmap f a
+  fmap f (GeometryPolygon a)         = GeometryPolygon $ fmap f a
+  fmap f (GeometryMultiLineString a) = GeometryMultiLineString $ fmap f a
+  fmap f (GeometryMultiPolygon a)    = GeometryMultiPolygon $ fmap f a
+  fmap f (GeometryCollection a)      = GeometryCollection $ fmap (fmap f) a
 
 instance BaseType a => HasBoundingBox (GeometryObject a) a where
   boundingBox (GeometryPoint a)           = boundingBox a

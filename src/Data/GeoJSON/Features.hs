@@ -21,6 +21,7 @@ module Data.GeoJSON.Features
 import           Control.Applicative
 import           Control.Lens.Getter
 import           Control.Lens.Prism
+
 import           Data.Vector (Vector)
 import           Control.Lens.TH
 import           Data.Aeson              as Aeson
@@ -51,6 +52,17 @@ makeClassy ''FeatureObject
 nullFeatureObject :: (BaseType a) => FeatureObject a
 nullFeatureObject = FeatureObject Nothing Nothing Nothing
 
+instance (Functor (Geometry g)) => Functor (Feature g) where
+  fmap f a = Feature
+    (a ^. featureId)
+    (fmap (fmap f) (a ^. featureGeometry ))
+    (a ^. properties)
+
+instance Functor FeatureObject where
+  fmap f a = FeatureObject
+    (a ^. featureId)
+    (fmap (fmap f) (a ^. featureObjectGeometry ))
+    (a ^. properties)
 
 
 instance HasFeatureId (Feature g a) where
@@ -126,6 +138,10 @@ newtype FeatureCollection g a =
 newtype FeatureCollectionObject a =
   FeatureCollectionObject (Vector (FeatureObject a))
 
+instance Monoid (FeatureCollection g a) where
+  mempty = FeatureCollection mempty
+  mappend (FeatureCollection a) (FeatureCollection b) =
+    FeatureCollection $ mappend a b
 
 _FeatureCollectionObject ::
   (BaseType a, Applicative f, Foldable f, Monoid (f (FeatureObject a))) =>
@@ -141,6 +157,11 @@ _FeatureCollection = prism' f t
   where f = FeatureCollection . foldMap pure
         t (FeatureCollection a) = pure $ foldMap pure a
 
+instance (Functor (Geometry g)) => Functor (FeatureCollection g) where
+  fmap f (FeatureCollection a) = FeatureCollection $ fmap (fmap f) a
+
+instance Functor FeatureCollectionObject where
+  fmap f (FeatureCollectionObject a) = FeatureCollectionObject $ fmap (fmap f) a
 
 instance (BaseType a) => HasBoundingBox (FeatureCollectionObject a) a where
   boundingBox (FeatureCollectionObject a) = foldMap boundingBox a

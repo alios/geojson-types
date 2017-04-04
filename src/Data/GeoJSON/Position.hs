@@ -38,11 +38,17 @@ data Position a
   | Position3 (a, a, a)
   deriving (Eq, Show)
 
+instance Functor Position where
+  fmap f (Position2 (x,y)) = Position2 (f x, f y)
+  fmap f (Position3 (x,y,z)) = Position3 (f x, f y, f z)
+
 newtype BoundingBox a =
   BoundingBox (Position a, Position a)
   deriving (Eq, Show)
 makePrisms ''BoundingBox
 
+instance Functor BoundingBox where
+  fmap f (BoundingBox (a,b)) = BoundingBox (fmap f a, fmap f b)
 
 
 type PositionStructure fc a = fc a

@@ -36,7 +36,6 @@ class (ToJSON i, FromJSON i, BaseType a) => IsGeometry g i a | g a -> i where
   _Geometry     :: Iso' i (Geometry g a)
   geometryType  :: Proxy (g, a) -> Text
 
-
 type PositionStructureClass fc a =
   (BaseType a, Traversable fc, Applicative fc, Monoid (fc a))
 
