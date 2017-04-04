@@ -1,6 +1,6 @@
 name:                geojson-types
-version:             0.1.8
-synopsis:            GeoJSON data types including JSON/BSON conversion.
+version:             0.2.0
+synopsis:            GeoJSON data types.
 homepage:            https://github.com/alios/geojson-types/
 bug-reports:         https://github.com/alios/geojson-types/issues
 license:             BSD3
@@ -10,10 +10,11 @@ maintainer:          Markus Barenhoff <mbarenh@alios.org>
 copyright:           Copyright (c) 2016 Markus Barenhoff
 category:            Data
 build-type:          Simple
-stability:           provisional
-tested-with:         GHC == 7.10.3
-cabal-version:       >=1.10
-
+stability:           alpha
+tested-with:         GHC == 8.0.2
+cabal-version:       >= 1.20
+extra-source-files:  README.md
+                     CHANGELOG.md
 description:
             Provides data types, lens operators and (de)serialization
             of GeoJSON data to/from JSON and BSON using aeson and bson.
@@ -63,31 +64,30 @@ description:
 
 
 library
+  default-language:    Haskell2010
+  hs-source-dirs:      src
   exposed-modules:     Data.GeoJSON,
-                       Data.GeoJSON.Objects,
-                       Data.GeoJSON.Features,
-                       Data.GeoJSON.Classes
+                       Data.GeoJSON.Classes,
+                       Data.GeoJSON.Position,
+                       Data.GeoJSON.Geometries,
+                       Data.GeoJSON.Features
+
+--                       Data.GeoJSON.Objects,
+--                       Data.GeoJSON.Features,
+
   other-modules:       Data.GeoJSON.Intern
-  other-extensions:    FlexibleInstances,
-                       TypeSynonymInstances,
-                       GADTs,
-                       OverloadedStrings,
-                       FunctionalDependencies,
-                       MultiParamTypeClasses,
-                       FlexibleContexts,
-                       ConstraintKinds,
-                       RankNTypes,
-                       TypeFamilies
-  build-depends:       aeson >=0.9,
-                       base >=4.8 && <4.9,
+  build-depends:       aeson,
+                       base >= 4.7 && < 5,
                        bson,
-                       bytestring,
-                       lens >=4.13,
-                       persistent >= 2.2,
-                       scientific >= 0.3,
+                       containers,
+                       lens,
+                       scientific,
                        text,
                        unordered-containers,
                        vector
-  hs-source-dirs:      src
-  default-language:    Haskell2010
   ghc-options:         -Wall
+
+
+source-repository       head
+    type:               git
+    location:           https://github.com/alios/geojson-types.git

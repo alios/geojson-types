@@ -1,120 +1,98 @@
 {-# LANGUAGE OverloadedStrings #-}
+module Data.GeoJSON.Intern  where
 
-module Data.GeoJSON.Intern where
 
-import           Data.Aeson
-import qualified Data.Aeson              as Aeson
-import qualified Data.Aeson.Types        as Aeson
-import           Data.Bson               (Field (..))
-import qualified Data.Bson               as Bson
+import           Control.Applicative
+import           Control.Lens.Iso
+import           Control.Lens.Operators hiding ((.=))
+import           Data.Aeson             as Aeson
+import           Data.Aeson.Types       as Aeson
+import           Data.Bson              as Bson
+import qualified Data.HashMap.Strict    as Map
 import           Data.Scientific
-import           Data.Text               (Text)
-import qualified Data.Text               as T
-import qualified Data.Text.Lazy          as TL
-import           Data.Text.Lazy.Encoding
-import qualified Data.Vector             as V
-import           Database.Persist
-import           GHC.Exts
+import           Data.Text              (Text)
 
+typeField, coordinatesField, geometriesField, geometryField
+  , propertiesField, idField, featuresField :: Text
+coordinatesField = "coordinates"
+typeField = "type"
+geometriesField = "geometries"
+geometryField = "geometry"
+idField = "id"
+propertiesField = "properties"
+featuresField = "features"
 
-jsonToBson :: (ToJSON a) => a -> Bson.Value
-jsonToBson a = case toJSON a of
-  (Bool b) -> Bson.Bool b
-  (Number n) -> case floatingOrInteger n of
-    Left f -> Bson.Float f
-    Right i -> Bson.Int64 i
-  (String t) -> Bson.String t
-  (Array v) ->  Bson.Array . V.toList $ jsonToBson <$> v
-  Null -> Bson.Null
-  (Object o) -> Bson.Doc [ k := v | (k,v) <- toList . fmap jsonToBson $ o]
-
-jsonFromBson :: FromJSON a => Bson.Value -> Maybe a
-jsonFromBson a =
-  case fromJSON <$> jsonFromBson' a of
-    Just (Success v) -> pure v
-    _ -> Nothing
-
-
-jsonFromBson' :: Bson.Value -> Maybe Value
-jsonFromBson' (Bson.Bool b) = pure . Bool $ b
-jsonFromBson' (Bson.Float f) = pure . Number . fromFloatDigits $ f
-jsonFromBson' (Bson.Int32 i) = pure . Number . fromInteger . toInteger $ i
-jsonFromBson' (Bson.Int64 i) = pure . Number . fromInteger . toInteger $ i
-jsonFromBson' (Bson.String t) = pure . String $ t
-jsonFromBson' (Bson.Array l) =
-  fmap (Array . V.fromList) . sequence $ jsonFromBson' <$> l
-jsonFromBson' (Bson.Doc d) =
-  let mapFields f = case jsonFromBson' . Bson.value $ f of
-        Nothing -> Nothing
-        Just v -> pure (Bson.label f, v)
-      kvl = sequence $ mapFields <$> d
-  in fmap toJSON kvl
-jsonFromBson' Bson.Null = pure Null
-jsonFromBson' _ = Nothing
-
-jsonToPersistValue :: (ToJSON a) => a -> PersistValue
-jsonToPersistValue p = case jsonToPersistValue' . toJSON $ p of
-  Error err -> error $ "jsonToPersistValue: " ++ show err
-  Success a -> a
-
-jsonToPersistValue' :: Aeson.Value -> Result PersistValue
-jsonToPersistValue' (Aeson.String t) = Success (PersistText t)
-jsonToPersistValue' (Aeson.Array a) =
-  case sequence . foldr (mappend . pure . jsonToPersistValue') mempty $ a of
-    Success a' -> return . PersistList $ a'
-    Error err -> Error err
-jsonToPersistValue' (Aeson.Object o) =
-  case sequence $ jsonToPersistValue' <$> o of
-    Success o' -> return . PersistMap . toList $ o'
-    Error err -> Error err
-jsonToPersistValue' a = fromJSON a
-
-
-persistFieldToValue' :: (PersistField a) => a -> Aeson.Value
-persistFieldToValue' a = case toPersistValue a of
-  (PersistText t) -> Aeson.String t
-  (PersistMap m) -> object [ k .= persistFieldToValue' v | (k,v) <- m]
-  (PersistList l) ->
-    let toV = foldr (mappend . pure . persistFieldToValue') mempty
-    in Aeson.Array . toV $ l
-  a' -> toJSON a'
-
-persistFieldToValue :: (PersistField a, FromJSON b) => a  -> Either T.Text b
-persistFieldToValue a = case fromJSON . persistFieldToValue' $ a of
-  Error e -> Left . T.pack $ e
-  Success b -> Right b
+_point, _multiPoint, _lineString, _polygon
+  , _multiLineString, _multiPolygon, _geometryCollection
+  , _feature, _featureCollection :: Text
+_point = "Point"
+_multiPoint = "MultiPoint"
+_lineString = "LineString"
+_polygon = "Polygon"
+_multiLineString = "MultiLineString"
+_multiPolygon = "MultiPolygon"
+_geometryCollection = "GeometryCollection"
+_feature = "Feature"
+_featureCollection = "FeatureCollection"
 
 
 
 
+parserMaybe :: Maybe a -> Aeson.Parser a
+parserMaybe = maybe empty return
 
-typeT, coordinatesT, geometryT, idT, idBsonT, propertiesT, featuresT :: Text
-typeT = "type"
-geometryT = "geometry"
-coordinatesT = "coordinates"
-propertiesT = "properties"
-idT = "id"
-idBsonT = "_id"
-featuresT = "features"
 
-pointT, multiPointT, lineStringT, linearRingT,
-  multiLineStringT, polygonT, geometriesT, multiPolygonT,
-  geometryCollectionT, featureT, featureCollectionT :: String
-pointT = "Point"
-multiPointT = "MultiPoint"
-lineStringT = "LineString"
-linearRingT = "LinearRing"
-multiLineStringT = "MultiLineString"
-polygonT = "Polygon"
-multiPolygonT = "MultiPolygon"
-geometryCollectionT = "GeometryCollection"
-featureT = "Feature"
-featureCollectionT = "FeatureCollection"
-geometriesT = "geometries"
+_AesonBson :: Iso' Aeson.Value Bson.Value
+_AesonBson = iso fromAeson toAeson
 
-withNamedArray ::
-  String -> Aeson.Object -> (Aeson.Array -> Aeson.Parser a) -> Aeson.Parser a
-withNamedArray n o p = (o .: T.pack n) >>= Aeson.withArray n p
+{-
+instance Aeson.FromJSON Bson.Value where
+  parseJSON = pure . view _AesonBson
 
-showJSON :: ToJSON a => a -> String
-showJSON = TL.unpack . decodeUtf8 . encode
+instance Aeson.ToJSON Bson.Value where
+  toJSON = review _AesonBson
+
+instance Bson.Val Aeson.Value where
+  val = view _AesonBson
+  cast' = pure . review _AesonBson
+-}
+
+
+fromAeson :: Aeson.Value -> Bson.Value
+fromAeson Aeson.Null = Bson.Null
+fromAeson (Aeson.Bool a) = Bson.val a
+fromAeson (Aeson.String a) = Bson.val a
+fromAeson (Aeson.Array a) = Bson.val $ (fromAeson <$> a) ^.. traverse
+fromAeson (Aeson.Object o ) = Bson.val .
+  Map.foldrWithKey (\k v a -> (k := fromAeson v) : a ) mempty $ o
+fromAeson (Aeson.Number a) = Bson.val $
+  if isFloating a then
+    -- TODO: check weather Double or Float
+    Bson.val (toRealFloat a :: Double) else
+    maybe (error $ "fromAeson: unable to cast " ++ show a ++ " to Integer") Bson.val
+    -- TODO: we want an Integer
+    (toBoundedInteger a :: Maybe Int)
+
+
+toAeson :: Bson.Value -> Aeson.Value
+toAeson (Bson.Float a)   = toJSON a
+toAeson (Bson.String a)  = toJSON a
+toAeson (Bson.Doc a)     =
+  Aeson.object [ Bson.label f .=  toAeson (Bson.value f) | f <- a ]
+toAeson (Bson.Array a)   = toJSON $ fmap toAeson a
+toAeson (Bson.Bin a)     = toJSON . show $ a
+toAeson (Bson.Fun a)     = toJSON . show $ a
+toAeson (Bson.Uuid a)    = toJSON . show $ a
+toAeson (Bson.Md5 a)     = toJSON . show $ a
+toAeson (Bson.UserDef a) = toJSON . show $ a
+toAeson (Bson.ObjId a)   = toJSON . show $ a
+toAeson (Bson.Bool a)    = toJSON a
+toAeson (Bson.UTC  a)    = toJSON a
+toAeson Bson.Null        = Aeson.Null
+toAeson (Bson.RegEx a)   = toJSON . show $ a
+toAeson (Bson.JavaScr a) = toJSON . show $ a
+toAeson (Bson.Sym  a)    = toJSON . show $ a
+toAeson (Bson.Int32  a)  = toJSON a
+toAeson (Bson.Int64  a)  = toJSON a
+toAeson (Bson.Stamp  a)  = toJSON . show $ a
+toAeson (Bson.MinMax a)  = toJSON . show $ a

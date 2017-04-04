@@ -1,15 +1,8 @@
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeSynonymInstances   #-}
+{-# LANGUAGE UndecidableInstances   #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.GeoJSON.Features
@@ -17,202 +10,167 @@
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Markus Barenhoff <mbarenh@alios.org>
 -- Stability   :  provisional
--- Portability :  FunctionalDependencies,
---                TypeFamilies,
---                GADTs
---                RankNTypes
---
+-- Portability :  FunctionalDependencies, TemplateHaskell
 ----------------------------------------------------------------------------
 module Data.GeoJSON.Features
-       ( -- * Feature
-         HasFeature(..), Feature, _Feature, mapFeature,
-         -- * JSON Feature
-         HasFeatureJSON(..), FeatureJSON, _FeatureJSON, mapFeatureJSON,
-         -- * Feature Collection
-         FeatureCollection, FeatureCollectionJSON,
-         _FeatureCollection, mapFeatureCollection
-       ) where
+  ( HasFeature(..), Feature, nullFeature
+  , HasFeatureObject(..), FeatureObject, nullFeatureObject
+  , FeatureCollection, _FeatureCollection
+  ) where
 
+import           Control.Applicative
 import           Control.Lens.Getter
-import           Control.Lens.Lens
-import           Control.Lens.Setter  hiding ((.=))
+import           Control.Lens.Prism
+import           Data.Vector (Vector)
 import           Control.Lens.TH
-import           Data.Aeson           ((.:), (.=))
-import qualified Data.Aeson           as Aeson
-import qualified Data.Bson            as Bson
+import           Data.Aeson              as Aeson
+import           Data.GeoJSON.Classes
+import           Data.GeoJSON.Geometries
 import           Data.GeoJSON.Intern
-import           Data.GeoJSON.Objects
-import           Data.Typeable
-import           Data.Vector          (Vector)
-import           Database.Persist
-import           Database.Persist.Sql
-import           GHC.Exts
-import           GHC.Generics         (Generic)
+import           Data.GeoJSON.Position
 
---
--- Feature
---
+data Feature g a = Feature {
+  __featureId        :: Maybe FeatureId,
+  _featureGeometry   :: Maybe (Geometry g a),
+  _featureProperties :: Maybe Object
+  }
 
-newtype Feature f t
-  = Feature (FeatureProperties f, GeoJSON (FeatureType f) t)
+makeClassy ''Feature
 
+nullFeature :: (IsGeometry g i a) => Feature g a
+nullFeature = Feature Nothing Nothing Nothing
 
+data FeatureObject a = FeatureObject {
+  _featureObjectId         :: Maybe FeatureId,
+  _featureObjectGeometry   :: Maybe (GeometryObject a),
+  _featureObjectProperties :: Maybe Object
+  }
 
-class ( BaseType t
-      , BaseGeoJSONObject (FeatureType f) t
-      , Aeson.ToJSON (FeatureProperties f)
-      , Aeson.FromJSON (FeatureProperties f)
-      , Typeable f
-      ) => HasFeature f t | f -> t where
-  data FeatureProperties f :: *
-  type FeatureType f :: *
+makeClassy ''FeatureObject
 
-  featureProperties :: Lens' f (FeatureProperties f)
-  featureGeometry :: Lens' f (GeoJSON (FeatureType f) t)
-
-instance (HasFeature f t) => HasFlatCoordinates (Feature f t) t where
-  flatCoordinates = to fc
-    where fc (Feature (_, g)) = g ^. flatCoordinates
-
-mapFeature :: (HasFeature f t, BaseType s) =>
-              (t -> s) -> Feature f t -> Feature f s
-mapFeature f (Feature (ps, g)) = Feature (ps, mapGeoJSON f g)
+nullFeatureObject :: (BaseType a) => FeatureObject a
+nullFeatureObject = FeatureObject Nothing Nothing Nothing
 
 
-toFeature :: HasFeature s t => s -> Feature s t
-toFeature f = Feature (f ^. featureProperties, f ^. featureGeometry)
 
-instance HasFeature f t => Aeson.ToJSON (Feature f t) where
-  toJSON (Feature (ps, g)) = Aeson.object [
-    typeT .= featureT,
-    propertiesT .= ps,
-    geometryT .= g
+instance HasFeatureId (Feature g a) where
+  featureId = _featureId
+
+instance HasFeatureId (FeatureObject a) where
+  featureId = featureObjectId
+
+instance HasProperties (Feature g a) where
+  properties = featureProperties
+
+instance HasProperties (FeatureObject a) where
+  properties = featureObjectProperties
+
+
+
+instance (HasBoundingBox(Geometry g a) a) =>
+  HasBoundingBox (Feature g a) a where
+  boundingBox f = maybe mempty boundingBox $ view featureGeometry f
+
+instance (HasBoundingBox(GeometryObject a) a) =>
+  HasBoundingBox (FeatureObject a) a where
+  boundingBox f = maybe mempty boundingBox $ view featureObjectGeometry f
+
+
+instance (IsGeometry g i a) => ToJSON (Feature g a) where
+  toJSON = hasFeatureToJSON
+
+instance (BaseType a) => ToJSON (FeatureObject a) where
+  toJSON = hasFeatureObjectToJSON
+
+instance (IsGeometry g i a) => FromJSON (Feature g a) where
+  parseJSON (Object a) = do
+    t <- a .: typeField
+    if t /= _feature then empty
+      else Feature <$>
+           a .:? idField <*> a .:? geometryField <*> a .:? propertiesField
+  parseJSON _          = empty
+
+instance (BaseType a) => FromJSON (FeatureObject a) where
+  parseJSON (Object a) = do
+    t <- a .: typeField
+    if t /= _feature then empty
+      else FeatureObject <$>
+           a .:? idField <*> a .:? geometryField <*> a .:? propertiesField
+  parseJSON _          = empty
+
+
+hasFeatureToJSON :: (HasFeature s g a, IsGeometry g i a) => s -> Value
+hasFeatureToJSON f =
+  let a = f ^. feature
+  in object [
+  typeField .= _feature,
+  geometryField .= (a ^. featureGeometry),
+  propertiesField .= (a ^. featureProperties),
+  idField .= (a ^. featureId)
+  ]
+
+hasFeatureObjectToJSON :: (HasFeatureObject s a, BaseType a) => s -> Value
+hasFeatureObjectToJSON f =
+  let a = f ^. featureObject
+  in object [
+  typeField .= _feature,
+  geometryField .= (a ^. featureObjectGeometry),
+  propertiesField .= (a ^. featureObjectProperties),
+  idField .= (a ^. featureObjectId)
+  ]
+
+
+newtype FeatureCollection g a =
+  FeatureCollection (Vector (Feature g a))
+
+newtype FeatureCollectionObject a =
+  FeatureCollectionObject (Vector (FeatureObject a))
+
+
+_FeatureCollectionObject ::
+  (BaseType a, Applicative f, Foldable f, Monoid (f (FeatureObject a))) =>
+  Prism' (FeatureCollectionObject a) (f (FeatureObject a))
+_FeatureCollectionObject = prism' f t
+  where f = FeatureCollectionObject . foldMap pure
+        t (FeatureCollectionObject a) = pure $ foldMap pure a
+
+_FeatureCollection ::
+  (BaseType a, Applicative f, Foldable f, Monoid (f (Feature g a))) =>
+  Prism' (FeatureCollection g a) (f (Feature g a))
+_FeatureCollection = prism' f t
+  where f = FeatureCollection . foldMap pure
+        t (FeatureCollection a) = pure $ foldMap pure a
+
+
+instance (BaseType a) => HasBoundingBox (FeatureCollectionObject a) a where
+  boundingBox (FeatureCollectionObject a) = foldMap boundingBox a
+
+instance (HasBoundingBox (Geometry g a) a) =>
+  HasBoundingBox (FeatureCollection g a) a where
+  boundingBox (FeatureCollection a) = foldMap boundingBox a
+
+instance BaseType a => ToJSON (FeatureCollectionObject a) where
+  toJSON (FeatureCollectionObject a) = object [
+    typeField .= _featureCollection,
+    featuresField  .= a
     ]
 
-instance (HasFeature f t) => Aeson.FromJSON (Feature f t) where
-  parseJSON = Aeson.withObject featureT $ \o -> do
-    t <- o .: typeT
-    if featureT /= t
-      then fail . mconcat $ ["expected ", featureT, " got ", t ]
-      else Feature <$> ((,) <$> o .: propertiesT <*> o .: geometryT)
+instance IsGeometry g i a => ToJSON (FeatureCollection g a) where
+  toJSON (FeatureCollection a) = object [
+    typeField .= _featureCollection,
+    featuresField  .= a
+    ]
 
-instance (HasFeature f t) => Show (Feature f t) where
-  show = showJSON
+instance (BaseType a) => FromJSON (FeatureCollectionObject a) where
+  parseJSON (Object a) = do
+    t <- a .: typeField
+    if t /= _featureCollection then empty
+      else FeatureCollectionObject <$> a .: featuresField
+  parseJSON _          = empty
 
-instance (HasFeature f t) => Eq (Feature f t) where
-  a == b = Aeson.toJSON a == Aeson.toJSON b
-
-instance HasFeature f t => PersistField (Feature f t) where
-  toPersistValue = jsonToPersistValue
-  fromPersistValue = persistFieldToValue
-
-instance HasFeature f t => PersistFieldSql (Feature f t) where
-  sqlType _ = SqlString
-
-instance HasFeature f t => Bson.Val (Feature  f t) where
-  val = jsonToBson
-  cast' = jsonFromBson
-
-updateFeatureJSON :: (HasFeature f t, Monad m) => Aeson.Value -> f -> m f
-updateFeatureJSON b a = case updateFeatureJSON' b a of
-  Aeson.Success a' -> return a'
-  Aeson.Error e -> fail e
-
-updateFeatureJSON' :: (HasFeature f t) => Aeson.Value -> f -> Aeson.Result f
-updateFeatureJSON' a b = do
-  (Feature (ps, g)) <- Aeson.fromJSON a
-  maybe (fail "unable to cast to Feature") return . cast . setFeature ps g $ b
-  where
-    setFeature ps g = set featureProperties ps . set featureGeometry g
-
-data FeatureJSON a t =
-  FeatureJSON {
-    _featureJSONProperties :: Aeson.Value,
-    _featureJSONGeometry   :: GeoJSON a t
-    }
-makeClassy ''FeatureJSON
-makePrisms ''FeatureJSON
-
-
-mapFeatureJSON :: (BaseGeoJSONObject a t, BaseType s) =>
-              (t -> s) -> FeatureJSON a t -> FeatureJSON a s
-mapFeatureJSON f (FeatureJSON ps g) = FeatureJSON ps (mapGeoJSON f g)
-
-
-instance BaseGeoJSONObject a t => HasFeature (FeatureJSON a t) t where
-  data FeatureProperties (FeatureJSON a t) =
-    MkJSONFeature Aeson.Value
-    deriving (Typeable, Generic)
-  type FeatureType (FeatureJSON a t) = a
-  featureProperties = lens g s
-    where g = MkJSONFeature . view featureJSONProperties
-          s f (MkJSONFeature v) = set featureJSONProperties v f
-  featureGeometry = featureJSONGeometry
-
-instance Aeson.ToJSON (FeatureProperties (FeatureJSON a t))
-instance Aeson.FromJSON (FeatureProperties (FeatureJSON a t))
-
-instance BaseGeoJSONObject a t => Aeson.ToJSON (FeatureJSON a t) where
-  toJSON = Aeson.toJSON . toFeature
-
-instance BaseGeoJSONObject a t => Aeson.FromJSON (FeatureJSON a t) where
-  parseJSON = flip updateFeatureJSON (FeatureJSON undefined undefined)
-
-instance BaseGeoJSONObject a t => Show (FeatureJSON a t) where
-  show = showJSON
-
-instance BaseGeoJSONObject a t => Eq (FeatureJSON a t) where
-  a == b = Aeson.toJSON a == Aeson.toJSON b
-
-instance BaseGeoJSONObject a t => PersistField (FeatureJSON a t) where
-  toPersistValue = jsonToPersistValue
-  fromPersistValue = persistFieldToValue
-
-instance BaseGeoJSONObject a t => PersistFieldSql (FeatureJSON a t) where
-  sqlType _ = SqlString
-
---
--- FeatureCollection
---
-
-newtype FeatureCollection f t =
-  FeatureCollection (Vector (Feature f t))
-
-makePrisms ''FeatureCollection
-
-type FeatureCollectionJSON a t = FeatureCollection (FeatureJSON a t) t
-
-mapFeatureCollection ::
-  (HasFeature f t, BaseType s) =>
-  (t -> s) -> FeatureCollection f t -> FeatureCollection f s
-mapFeatureCollection f (FeatureCollection fc) =
-  FeatureCollection (mapFeature f <$> fc)
-
-instance (HasFeature f t) => Aeson.ToJSON (FeatureCollection f t) where
-  toJSON (FeatureCollection fc) =
-    Aeson.object [ typeT .= featureCollectionT, featuresT .= fc ]
-
-instance (HasFeature f t) => Aeson.FromJSON (FeatureCollection f t) where
-  parseJSON = Aeson.withObject featureCollectionT $ \o -> do
-    t <- o .: typeT
-    if featureCollectionT /= t
-      then fail . mconcat $ ["expected ", featureCollectionT, " got ", t ]
-      else FeatureCollection <$> o .: featuresT
-
-instance (HasFeature f t) => Show (FeatureCollection f t) where
-  show = showJSON
-
-instance (HasFeature f t) => Eq (FeatureCollection f t) where
-  a == b = Aeson.toJSON a == Aeson.toJSON b
-
-instance (HasFeature f t) => HasFlatCoordinates (FeatureCollection f t) t where
-  flatCoordinates = to gfc
-    where gfc (FeatureCollection fc) =
-            mconcat . fmap (view flatCoordinates) . toList $ fc
-
-instance HasFeature f t => Bson.Val (FeatureCollection  f t) where
-  val = jsonToBson
-  cast' = jsonFromBson
-
-
-makePrisms ''Feature
+instance (IsGeometry g i a) => FromJSON (FeatureCollection g a) where
+  parseJSON (Object a) = do
+    t <- a .: typeField
+    if t /= _featureCollection then empty
+      else FeatureCollection <$> a .: featuresField
+  parseJSON _          = empty
